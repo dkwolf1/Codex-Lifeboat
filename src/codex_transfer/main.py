@@ -22,6 +22,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # PyInstaller one-file apps can be launched from transient Windows locations
+    # (for example, directly from a ZIP). Preserve a stable copy while the launch
+    # path still exists so a later backup can include the restore application.
+    backup.stage_runtime_executable()
     args = parse_args()
     if args.self_test:
         result = run_self_test(Path(args.work) if args.work else None)

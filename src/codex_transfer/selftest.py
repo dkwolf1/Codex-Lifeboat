@@ -356,6 +356,16 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     source_auth_in_package = any(
         path.name.lower() == "auth.json" for path in package.rglob("*") if path.is_file()
     )
+    portable_executable_included = True
+    if getattr(sys, "frozen", False):
+        packaged_executable = package / "tools" / "Codex-Lifeboat.exe"
+        staged_executable = backup.stage_runtime_executable()
+        portable_executable_included = bool(
+            staged_executable
+            and packaged_executable.is_file()
+            and backup.sha256_file(packaged_executable)
+            == backup.sha256_file(staged_executable)
+        )
     auth_hash_before = backup.sha256_file(target_profile / ".codex" / "auth.json")
     prepared = restore.prepare_restore(
         package, target_profile, allow_running_test=True
@@ -421,6 +431,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "packageValid": package_validation["valid"],
         "sourceUnchanged": source_before == source_after,
         "sourceAuthExcluded": not source_auth_in_package,
+        "portableExecutableIncluded": portable_executable_included,
         "restoreValid": restored_validation["valid"],
         "targetAuthPreserved": auth_preserved,
         "projectExact": project_exact,

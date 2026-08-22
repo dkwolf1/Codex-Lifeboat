@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.1 - 2026-08-22
+
+- Fixed backup failure with `WinError 3` when the portable application was
+  launched from a transient Windows location.
+- The running application now stages a stable copy of itself at startup so the
+  restore executable can always be included in the USB backup.
+
 ## 3.1.0 - 2026-08-22
 
 - Renamed the public product and executable to Codex Lifeboat.

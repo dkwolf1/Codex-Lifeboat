@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import traceback
 import uuid
 import urllib.parse
@@ -24,8 +25,10 @@ from typing import Any, Iterable
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.0"
-GENERATOR_VERSION = "3.1.0"
+GENERATOR_VERSION = "3.1.1"
 PROGRESS_CALLBACK = None
+_RUNTIME_EXECUTABLE: Path | None = None
+_RUNTIME_DIRECTORY: tempfile.TemporaryDirectory[str] | None = None
 PORTABLE_STATE_KEYS = (
     "local-projects",
     "project-order",
@@ -62,6 +65,40 @@ ATTACHMENT_PATTERN = re.compile(
 
 class BackupError(RuntimeError):
     pass
+
+
+def stage_runtime_executable() -> Path | None:
+    """Keep a stable copy of the one-file app for inclusion in later backups."""
+    global _RUNTIME_DIRECTORY, _RUNTIME_EXECUTABLE
+    if not getattr(sys, "frozen", False):
+        return None
+    if _RUNTIME_EXECUTABLE and _RUNTIME_EXECUTABLE.is_file():
+        return _RUNTIME_EXECUTABLE
+
+    source = Path(sys.executable)
+    if not source.is_file():
+        raise BackupError(
+            "Codex Lifeboat cannot access its own executable. Extract the downloaded "
+            "ZIP first, then run Codex-Lifeboat.exe from the extracted folder."
+        )
+
+    runtime_directory = tempfile.TemporaryDirectory(prefix="Codex-Lifeboat-runtime-")
+    staged = Path(runtime_directory.name) / "Codex-Lifeboat.exe"
+    try:
+        shutil.copy2(source, staged)
+        if staged.stat().st_size != source.stat().st_size:
+            raise OSError("the staged executable has an unexpected size")
+    except OSError as exc:
+        runtime_directory.cleanup()
+        raise BackupError(
+            "Codex Lifeboat could not prepare its executable for the portable backup. "
+            "Extract the downloaded ZIP to a normal local folder and start it again. "
+            f"Windows reported: {exc}"
+        ) from exc
+
+    _RUNTIME_DIRECTORY = runtime_directory
+    _RUNTIME_EXECUTABLE = staged
+    return staged
 
 
 def log(message: str) -> None:
@@ -775,7 +812,9 @@ def copy_toolkit(package_root: Path, toolkit_root: Path) -> None:
     # Een PyInstaller-build neemt zichzelf mee, zodat dezelfde USB direct op de
     # destination computer for validation and restoration.
     if getattr(sys, "frozen", False):
-        executable = Path(sys.executable)
+        executable = stage_runtime_executable()
+        if executable is None:
+            raise BackupError("The portable Codex Lifeboat executable is unavailable.")
         copy_file(executable, package_tools / "Codex-Lifeboat.exe")
 
 
