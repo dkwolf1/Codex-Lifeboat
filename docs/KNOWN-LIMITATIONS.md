@@ -1,4 +1,4 @@
-# Known limitations of release 3.0.0
+# Known limitations of release 3.1.0
 
 1. There is no published stable import contract for the local Codex database.
    The assistant therefore inspects schemas and must be retested after major future

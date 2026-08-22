@@ -1,6 +1,6 @@
 [project]
-name = "codex-transfer-assistant"
-version = "3.0.0"
+name = "codex-lifeboat"
+version = "3.1.0"
 description = "One-click Codex backup, restore and Windows PC migration utility"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -26,6 +26,13 @@ classifiers = [
   "Topic :: System :: Archiving :: Backup",
   "Topic :: System :: Recovery Tools",
 ]
+
+[project.gui-scripts]
+codex-lifeboat = "codex_transfer.main:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

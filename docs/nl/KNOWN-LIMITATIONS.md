@@ -1,4 +1,4 @@
-# Bekende grenzen van release 3.0.0
+# Bekende grenzen van release 3.1.0
 
 1. OpenAI publiceert geen stabiel importcontract voor de lokale Codex-database.
    De app gebruikt daarom schema-inspectie en moet na toekomstige grote

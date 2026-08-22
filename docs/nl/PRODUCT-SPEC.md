@@ -1,4 +1,4 @@
-# Productspecificatie 3.0
+# Productspecificatie 3.1
 
 ## Ondersteund
 

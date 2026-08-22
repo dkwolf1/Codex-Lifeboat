@@ -1,6 +1,6 @@
 # Roadmap: reliable Codex backup and restore
 
-[Dutch translation](ROADMAP-NL.md)
+[Dutch translation](nl/ROADMAP.md)
 
 ## 1. Goal
 

@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [string]$PythonPath
+)
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
@@ -10,7 +12,15 @@ $testRoot = Join-Path $repoRoot ".build\selftest-$stamp"
 Push-Location $repoRoot
 try {
     $env:PYTHONPATH = Join-Path $repoRoot 'src'
-    py -3 (Join-Path $repoRoot 'src\run_codex_transfer.py') --self-test --work $testRoot
+    if ($PythonPath) {
+        if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
+            throw "The specified Python executable does not exist: $PythonPath"
+        }
+        & $PythonPath (Join-Path $repoRoot 'src\run_codex_transfer.py') --self-test --work $testRoot
+    }
+    else {
+        py -3 (Join-Path $repoRoot 'src\run_codex_transfer.py') --self-test --work $testRoot
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "The self-test failed (exit code $LASTEXITCODE)."
     }

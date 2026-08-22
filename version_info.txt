@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(3, 0, 0, 0),
-    prodvers=(3, 0, 0, 0),
+    filevers=(3, 1, 0, 0),
+    prodvers=(3, 1, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -14,13 +14,13 @@ VSVersionInfo(
       StringTable(
         u'040904B0',
         [
-          StringStruct(u'CompanyName', u'Codex Transfer Assistant community project'),
-          StringStruct(u'FileDescription', u'Codex Transfer Assistant'),
-          StringStruct(u'FileVersion', u'3.0.0'),
-          StringStruct(u'InternalName', u'Codex-Transfer-Assistant'),
-          StringStruct(u'OriginalFilename', u'Codex-Transfer-Assistant.exe'),
-          StringStruct(u'ProductName', u'Codex Transfer Assistant'),
-          StringStruct(u'ProductVersion', u'3.0.0')
+          StringStruct(u'CompanyName', u'Codex Lifeboat community project'),
+          StringStruct(u'FileDescription', u'Codex Lifeboat'),
+          StringStruct(u'FileVersion', u'3.1.0'),
+          StringStruct(u'InternalName', u'Codex-Lifeboat'),
+          StringStruct(u'OriginalFilename', u'Codex-Lifeboat.exe'),
+          StringStruct(u'ProductName', u'Codex Lifeboat'),
+          StringStruct(u'ProductVersion', u'3.1.0')
         ]
       )
     ]),

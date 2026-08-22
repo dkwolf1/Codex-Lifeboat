@@ -1,4 +1,4 @@
-Codex Overzetassistent bundles the Python runtime and a PyInstaller bootloader.
+Codex Lifeboat bundles the Python runtime and a PyInstaller bootloader.
 
 Python is distributed under the Python Software Foundation License.
 https://docs.python.org/3/license.html

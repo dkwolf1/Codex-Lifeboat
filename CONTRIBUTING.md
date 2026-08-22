@@ -5,7 +5,7 @@ changes are welcome.
 
 ## Before opening an issue
 
-1. Read `KNOWN-LIMITATIONS.md` and `SECURITY.md`.
+1. Read `docs/KNOWN-LIMITATIONS.md` and `SECURITY.md`.
 2. Confirm that Codex was fully closed during backup or restore.
 3. Run `test.ps1` when a development environment is available.
 4. Remove usernames, project contents, API keys and authentication data from logs.

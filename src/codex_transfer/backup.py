@@ -24,7 +24,7 @@ from typing import Any, Iterable
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.0"
-GENERATOR_VERSION = "3.0.0"
+GENERATOR_VERSION = "3.1.0"
 PROGRESS_CALLBACK = None
 PORTABLE_STATE_KEYS = (
     "local-projects",
@@ -776,7 +776,7 @@ def copy_toolkit(package_root: Path, toolkit_root: Path) -> None:
     # destination computer for validation and restoration.
     if getattr(sys, "frozen", False):
         executable = Path(sys.executable)
-        copy_file(executable, package_tools / "Codex-Transfer-Assistant.exe")
+        copy_file(executable, package_tools / "Codex-Lifeboat.exe")
 
 
 def create_hash_manifest(package_root: Path) -> tuple[int, int, str]:

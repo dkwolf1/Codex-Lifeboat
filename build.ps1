@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '3.0.0',
+    [string]$Version = '3.1.0',
     [string]$PythonPath
 )
 
@@ -10,11 +10,12 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $buildRoot = Join-Path $repoRoot '.build'
 $venvRoot = Join-Path $buildRoot '.venv'
 $python = if ($PythonPath) { $PythonPath } else { Join-Path $venvRoot 'Scripts\python.exe' }
-$releaseRoot = Join-Path $repoRoot 'release'
-$versionReleaseRoot = Join-Path $repoRoot "releases\$Version"
-$zipPath = Join-Path $versionReleaseRoot "Codex-Transfer-Assistant-$Version-Windows-x64-Portable.zip"
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$releaseRoot = Join-Path $buildRoot "release-$stamp"
+$distRoot = Join-Path $repoRoot 'dist'
+$zipPath = Join-Path $distRoot 'Codex-Lifeboat-Windows-x64-Portable.zip'
 
-New-Item -ItemType Directory -Force -Path $buildRoot,$releaseRoot,$versionReleaseRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $buildRoot,$releaseRoot,$distRoot | Out-Null
 
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     if ($PythonPath) {
@@ -42,7 +43,7 @@ if ($LASTEXITCODE -ne 0) { throw 'The self-test failed; no release was built.' }
     --clean `
     --onefile `
     --windowed `
-    --name 'Codex-Transfer-Assistant' `
+    --name 'Codex-Lifeboat' `
     --version-file (Join-Path $repoRoot 'version_info.txt') `
     --paths (Join-Path $repoRoot 'src') `
     --distpath $releaseRoot `
@@ -52,21 +53,21 @@ if ($LASTEXITCODE -ne 0) { throw 'The self-test failed; no release was built.' }
 if ($LASTEXITCODE -ne 0) { throw 'Building the Windows application failed.' }
 
 Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination $releaseRoot -Force
-Copy-Item -LiteralPath (Join-Path $repoRoot 'README-NL.md') -Destination (Join-Path $releaseRoot 'LEESMIJ.md') -Force
-Copy-Item -LiteralPath (Join-Path $repoRoot 'KNOWN-LIMITATIONS.md') -Destination $releaseRoot -Force
-Copy-Item -LiteralPath (Join-Path $repoRoot 'KNOWN-LIMITATIONS-NL.md') -Destination (Join-Path $releaseRoot 'BEKENDE-GRENZEN.md') -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\nl\README.md') -Destination (Join-Path $releaseRoot 'LEESMIJ.md') -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\KNOWN-LIMITATIONS.md') -Destination $releaseRoot -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\nl\KNOWN-LIMITATIONS.md') -Destination (Join-Path $releaseRoot 'BEKENDE-GRENZEN.md') -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD-PARTY-NOTICES.txt') -Destination $releaseRoot -Force
 
-$exePath = Join-Path $releaseRoot 'Codex-Transfer-Assistant.exe'
+$exePath = Join-Path $releaseRoot 'Codex-Lifeboat.exe'
 $exeHash = (Get-FileHash -LiteralPath $exePath -Algorithm SHA256).Hash
-Set-Content -LiteralPath (Join-Path $releaseRoot 'SHA256.txt') -Encoding ascii -Value "$exeHash  Codex-Transfer-Assistant.exe"
+Set-Content -LiteralPath (Join-Path $releaseRoot 'SHA256.txt') -Encoding ascii -Value "$exeHash  Codex-Lifeboat.exe"
 
 if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
     Remove-Item -LiteralPath $zipPath -Force
 }
 Compress-Archive -Path (Join-Path $releaseRoot '*') -DestinationPath $zipPath -CompressionLevel Optimal
 $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
-Set-Content -LiteralPath (Join-Path $versionReleaseRoot 'SHA256.txt') -Encoding ascii -Value "$zipHash  $(Split-Path -Leaf $zipPath)"
+Set-Content -LiteralPath (Join-Path $distRoot 'SHA256.txt') -Encoding ascii -Value "$zipHash  $(Split-Path -Leaf $zipPath)"
 
 Write-Host "Build and tests passed: $zipPath" -ForegroundColor Green
 Write-Host "SHA-256: $zipHash"

@@ -1,4 +1,4 @@
-# Product specification 3.0
+# Product specification 3.1
 
 ## Supported environment
 

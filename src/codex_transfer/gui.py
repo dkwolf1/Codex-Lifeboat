@@ -17,7 +17,7 @@ from .validate import validate
 
 TEXT = {
     "nl": {
-        "title": "Codex Overzetassistent",
+        "title": "Codex Lifeboat",
         "subtitle": "Volledige Codex-back-up en 1-op-1 herstel voor Windows 10/11",
         "language": "Taal",
         "codex_home": "Gevonden Codex-map",
@@ -46,7 +46,7 @@ TEXT = {
         "detected_backup": "Back-up automatisch gevonden:\n\n{path}\n\nDeze gebruiken?",
     },
     "en": {
-        "title": "Codex Transfer Assistant",
+        "title": "Codex Lifeboat",
         "subtitle": "Complete Codex backup and 1-to-1 restore for Windows 10/11",
         "language": "Language",
         "codex_home": "Detected Codex folder",
@@ -290,7 +290,7 @@ class TransferApp(tk.Tk):
             return
 
         def work():
-            config_root = Path(tempfile.gettempdir()) / "Codex-Transfer-Assistant"
+            config_root = Path(tempfile.gettempdir()) / "Codex-Lifeboat"
             config_root.mkdir(parents=True, exist_ok=True)
             config_path = config_root / "backup-config.json"
             config_path.write_text(

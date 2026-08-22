@@ -12,7 +12,7 @@ from .validate import validate
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Codex Transfer Assistant")
+    parser = argparse.ArgumentParser(description="Codex Lifeboat")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--work")
     parser.add_argument("--validate")

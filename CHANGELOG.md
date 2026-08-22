@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.0 - 2026-08-22
+
+- Renamed the public product and executable to Codex Lifeboat.
+- Simplified the repository and moved binaries to GitHub Releases.
+- Added a prominent, unambiguous Windows download section.
+- Added Windows CI, automated release, dependency updates, and repository templates.
+- Completed Python package metadata and reorganized translated documentation.
+
 ## 3.0.0 - 2026-08-22
 
 - First standalone Windows 10/11 release.

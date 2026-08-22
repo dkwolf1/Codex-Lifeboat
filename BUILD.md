@@ -18,6 +18,16 @@ environment.
 
 The build script runs the complete self-test before creating any release. It then
 builds the standalone `.exe`, creates a portable zip and writes SHA-256 checksums.
-Temporary files are stored under `.build` and ignored by Git.
+Temporary files are stored under `.build`. The two files intended for a GitHub
+Release are written to `dist`:
+
+```text
+dist/
+├── Codex-Lifeboat-Windows-x64-Portable.zip
+└── SHA256.txt
+```
+
+Both directories are ignored by Git. Release binaries must be attached to a
+GitHub Release and must not be committed to the repository.
 
 End users do not need Python, PyInstaller, an installer or administrator rights.

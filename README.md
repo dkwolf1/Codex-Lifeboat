@@ -1,95 +1,91 @@
-# Codex Transfer Assistant
+# Codex Lifeboat
 
-**Complete Codex backup, restore and Windows PC migration — designed for one-click USB transfers.**
+**One-click Codex backup, restore, and Windows PC migration.**
 
-[Nederlands](README-NL.md) · [Download for Windows](releases/3.0.0/Codex-Transfer-Assistant-3.0.0-Windows-x64-Portable.zip) · [Build](BUILD.md) · [Security](SECURITY.md)
+[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
+[![Latest release](https://img.shields.io/github/v/release/dkwolf1/Codex-Lifeboat?label=release)](https://github.com/dkwolf1/Codex-Lifeboat/releases/latest)
+[![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 
-Codex Transfer Assistant is a standalone, bilingual Windows 10/11 utility for
-moving a local Codex workspace from one computer to another. It backs up projects,
-Git repositories, local conversations, archived conversations, attachments, skills
-and portable settings, validates every file with SHA-256, and restores the workspace
-while preserving the destination computer's login and machine identity.
+[Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/ROADMAP.md)
 
-It is intended for people looking for a reliable **Codex backup tool**, **Codex
-restore utility**, **Codex PC migration**, **Codex chat backup**, **Codex project
-transfer**, or **Codex USB backup**.
+## Download for Windows
 
-> This is an independent community migration utility and is not an official OpenAI product.
+### [Download Codex Lifeboat for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/latest)
 
-## Why this tool exists
+On the release page, download only:
 
-Blindly copying the complete `.codex` directory between computers can break local
-authentication, installation identity, paths and database state. This assistant
-separates portable workspace data from machine-specific data and performs a
-schema-aware import into a working Codex installation.
+```text
+Codex-Lifeboat-Windows-x64-Portable.zip
+```
 
-## Features
+Extract the ZIP and start `Codex-Lifeboat.exe`. No installation, Python, or
+administrator rights are required.
 
-- One-click graphical workflow for non-technical users
-- Windows 10 and Windows 11, 64-bit
-- English and Dutch interface
-- Complete project copies, including `.git`, `.env` and uncommitted files
-- Active and archived local Codex conversations
+> Do not download GitHub's automatically generated **Source code (zip)** or
+> **Source code (tar.gz)** files unless you want to develop the application.
+
+Windows SmartScreen may warn because the community build is not commercially
+code-signed. Verify the included `SHA256.txt` before running the application.
+
+## What it does
+
+Codex Lifeboat moves a local Codex workspace from one Windows computer to another.
+It creates and validates a portable backup, restores it into a working Codex
+installation, and preserves the destination computer's login and machine identity.
+
+It includes:
+
+- Complete project directories, including `.git`, `.env`, and uncommitted files
+- Active and archived local conversations
 - Project-to-conversation links and locally available attachments
 - Skills and portable Codex configuration
-- Consistent SQLite snapshots instead of unsafe live database copies
-- SHA-256 integrity manifest and read-only backup validation
-- Automatic Windows profile and project path translation
-- Local safety copy before restore
-- Automatic rollback if restoration fails
-- Best-effort Codex version check with a clear warning when unavailable
-- No Python installation or administrator rights required for end users
+- Consistent SQLite snapshots and SHA-256 integrity validation
+- Automatic Windows profile and project-path translation
+- A destination safety copy and automatic rollback on failure
 
-## Quick start
+It deliberately excludes source authentication, installation IDs, machine identity,
+caches, locks, sandbox secrets, and active runtime files.
 
-### Back up the source computer
+## Back up the source computer
 
 1. Fully close Codex.
 2. Insert the USB drive.
-3. Run `Codex-Transfer-Assistant.exe`.
+3. Start `Codex-Lifeboat.exe`.
 4. Choose **Create complete backup**.
 5. Choose **Verify backup** when creation is complete.
 
-### Restore on the new computer
+## Restore on the new computer
 
-1. Install Codex, open it once and sign in.
+1. Install Codex, open it once, and sign in.
 2. Fully close Codex.
-3. Run the assistant from the USB drive or backup directory.
+3. Start `Codex-Lifeboat.exe` from the USB drive.
 4. Choose **Complete restore**.
-5. Review the automatically created local safety copy and confirm.
+5. Review the safety-copy location and confirm.
 6. Choose **Verify restore** when restoration is complete.
 
-## What is intentionally excluded
+## Important security note
 
-The source computer's `auth.json`, installation ID, machine identity, caches,
-locks, sandbox secrets and active runtime files are never restored. The destination
-computer keeps its own valid login and identity.
-
-## Download and integrity
-
-The ready-to-run portable release is stored in [`releases/3.0.0`](releases/3.0.0).
-Verify the included SHA-256 checksum before running it. Because this community build
-is not commercially code-signed, Windows SmartScreen may display a warning.
-
-Backups are intentionally not encrypted and may contain `.env` files, API keys or
-other secrets. Keep backup media physically secure.
+Backups are intentionally not encrypted and may contain source code, `.env` files,
+API keys, and other confidential project data. Keep the USB drive physically secure.
+See the [security policy](SECURITY.md) for reporting vulnerabilities.
 
 ## Verified behavior
 
-The automated end-to-end suite checks package integrity, source immutability,
-authentication exclusion, exact project restoration, portable profile restoration,
-path translation, schema compatibility, tamper rejection, safety-copy retention,
-rollback and both GUI languages. See [test results](tests/TEST-RESULTS.md).
+The end-to-end suite checks package integrity, source immutability, authentication
+exclusion, exact project restoration, portable profile restoration, path translation,
+schema compatibility, tamper rejection, safety-copy retention, rollback, and both
+GUI languages. See the [test results](tests/TEST-RESULTS.md).
 
-## Repository layout
+## For developers
 
-- `src/` — current Python source for version 3.0
-- `tests/` — recorded end-to-end test results
-- `release/` — ready-to-run Windows files
-- `releases/3.0.0/` — portable release archive and checksum
-- `docs/ROADMAP.md` — English roadmap and design decisions
-- `legacy/Codex-Backup-Tools-v2/` — generic phase 0/1 prototype
-- `build.ps1` and `test.ps1` — reproducible Windows build and self-test
+- [Build and test](BUILD.md)
+- [Product specification](docs/PRODUCT-SPEC.md)
+- [Known limitations](docs/KNOWN-LIMITATIONS.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
+- [Third-party notices](THIRD-PARTY-NOTICES.txt)
 
-See [BUILD.md](BUILD.md) to build from source and [CONTRIBUTING.md](CONTRIBUTING.md)
-to help improve the project.
+The repository contains source code and documentation only. Ready-to-run binaries
+are distributed through [GitHub Releases](https://github.com/dkwolf1/Codex-Lifeboat/releases).
+
+Codex Lifeboat is an independent community project and is not an official OpenAI product.

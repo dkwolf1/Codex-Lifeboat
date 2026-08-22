@@ -20,7 +20,7 @@ except ImportError:
     from validate import validate
 
 
-RESTORE_VERSION = "3.0.0"
+RESTORE_VERSION = "3.1.0"
 PROTECTED_NAMES = {"auth.json", "installation_id", "cap_sid"}
 RUNTIME_NAMES = {
     ".sandbox",
