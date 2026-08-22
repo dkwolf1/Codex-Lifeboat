@@ -1,31 +1,31 @@
-# Testresultaten 3.0.0
+# Test results 3.0.0
 
-Datum: 22 augustus 2026
-Platform: Windows 11 buildomgeving; doelcompatibiliteit Windows 10/11 x64
+Date: August 22, 2026
+Platform: Windows 11 build environment; target compatibility Windows 10/11 x64
 
-## Geautomatiseerde systeemtest
+## Automated end-to-end test
 
-Dezelfde test is eerst tegen de broncode en daarna tegen de zelfstandige EXE
-uitgevoerd. De EXE-test gebruikte geen externe Python-runtime.
+The same suite was executed against the source code and the standalone executable.
+The executable test did not use an external Python runtime.
 
-| Controle | Resultaat |
+| Check | Result |
 |---|---|
-| Geldige pakketopbouw en onafhankelijke validatie | Geslaagd |
-| Bronbestanden vóór/na back-up identiek | Geslaagd |
-| Bron-`auth.json` niet in back-up | Geslaagd |
-| `.git`, `.env` en niet-gecommitte projectbestanden exact | Geslaagd |
-| Skills en draagbare Codex-configuratie hersteld | Geslaagd |
-| Andere bron- en doelgebruikersnaam automatisch vertaald | Geslaagd |
-| Oudere bron naar nieuwer doelschema | Geslaagd |
-| Nieuwere bronvelden naar ouder doelschema | Geslaagd |
-| Bestaand doelproject veiliggesteld en vervangen | Geslaagd |
-| Lokale doelaanmelding ongewijzigd | Geslaagd |
-| Beschadigd pakket afgekeurd | Geslaagd |
-| Geforceerde fout na database-opbouw | Rollback geslaagd |
-| Veiligheidskopie na succesvol herstel bewaard | Geslaagd |
-| Vier GUI-functies in Nederlands en Engels | Geslaagd |
-| Zelfstandige EXE start zonder directe crash | Geslaagd |
+| Valid package structure and independent validation | Passed |
+| Source files identical before and after backup | Passed |
+| Source `auth.json` excluded | Passed |
+| Exact `.git`, `.env` and uncommitted project files | Passed |
+| Skills and portable Codex configuration restored | Passed |
+| Different source and destination usernames translated | Passed |
+| Older source to newer destination schema | Passed |
+| Newer source fields to older destination schema | Passed |
+| Existing destination project secured and replaced | Passed |
+| Destination authentication unchanged | Passed |
+| Damaged package rejected | Passed |
+| Forced failure after database preparation | Rollback passed |
+| Safety copy retained after successful restore | Passed |
+| Four GUI operations in English and Dutch | Passed |
+| Standalone executable starts without an immediate crash | Passed |
 
-De testfixture bevat één database-thread, actieve rollout, project met `.git` en
-`.env`, een skill, een draagbaar configuratiebestand, bestaande doeldata en twee
-verschillende doeldatabaseschema's.
+The synthetic fixture contains one database conversation, an active rollout, a
+project with `.git` and `.env`, a skill, portable configuration, existing
+destination data and two different destination database schemas.

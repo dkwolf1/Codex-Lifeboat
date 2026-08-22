@@ -1,53 +1,48 @@
-# Roadmap: betrouwbare Codex-back-up en herstel
+# Roadmap: reliable Codex backup and restore
 
-## 1. Doel
+[Dutch translation](ROADMAP-NL.md)
 
-Een vaste, herhaalbare werkwijze bouwen waarmee een volledige Codex-werkomgeving veilig van computer A naar computer B kan worden overgezet, zonder de aanmelding, installatie-identiteit of machinegebonden instellingen van computer B te beschadigen.
+## 1. Goal
 
-De oplossing moet:
+Build a repeatable workflow that transfers a complete Codex working environment
+from Windows computer A to Windows computer B without damaging the destination
+login, installation identity or machine-specific settings.
 
-- projectbestanden, Git-repositories en aanvullende projectdata meenemen;
-- lokale Codex-chats, gearchiveerde chats, titels en projectkoppelingen meenemen;
-- bestaande chats en projecten op de doelcomputer behouden;
-- verschillende Windows-gebruikersnamen en projectpaden ondersteunen;
-- verschillende Codex-appversies veilig verwerken;
-- onderbreekbaar, hervatbaar en zonder schade opnieuw uitvoerbaar zijn;
-- vóór en na iedere bewerking controleerbaar bewijs opleveren;
-- een volledige terugrolmogelijkheid bieden.
+The solution must transfer projects, Git repositories, local conversations,
+archives, titles, project links and available attachments. It must support different
+Windows usernames and paths, handle Codex version differences safely, produce
+verifiable evidence before and after every operation, and provide rollback.
 
-## 2. Belangrijkste ontwerpbeslissing
+## 2. Core design decision
 
-De `.codex`-map mag nooit meer als één geheel van computer A naar computer B worden gekopieerd.
+Never copy the entire `.codex` directory from one computer over another. Split the
+profile into two categories.
 
-De inhoud wordt voortaan gesplitst in twee categorieën.
+### Portable data
 
-### Draagbare gegevens
+- Project directories and Git repositories
+- `sessions` and `archived_sessions`
+- A consistent SQLite snapshot containing conversation data
+- `session_index.jsonl`
+- Portable project and conversation fields from `.codex-global-state.json`
+- Locally available referenced attachments
+- Selected skills, instructions and user configuration
 
-- projectmappen en Git-repositories;
-- `sessions` en `archived_sessions`;
-- een consistente SQLite-snapshot met threadgegevens;
-- `session_index.jsonl`;
-- alleen de overdraagbare project- en threadvelden uit `.codex-global-state.json`;
-- beschikbare bijlagen waarnaar chats verwijzen;
-- optionele skills, instructies en andere expliciet geselecteerde gebruikersbestanden.
+### Machine-specific data
 
-### Machinegebonden gegevens
+Never restore these from the source computer:
 
-Deze worden nooit vanaf de broncomputer teruggezet:
+- `auth.json` and other authentication data
+- `installation_id` and `cap_sid`
+- Sandboxes, caches and temporary files
+- Active SQLite `-shm` files
+- Browser cookies, local app caches and Windows package data
+- Processes, locks, runtime state and local permission status
 
-- `auth.json` en andere aanmeldgegevens;
-- `installation_id` en `cap_sid`;
-- sandboxmappen, caches en tijdelijke bestanden;
-- actieve SQLite `-shm`-bestanden;
-- browsercookies, lokale appcache en Windows-packagegegevens;
-- machinegebonden processen, locks en runtimebestanden;
-- lokale permissie- en accountstatus van de doelcomputer.
+Restoration therefore means importing data into a working local installation,
+not replacing the complete profile.
 
-Herstel betekent daarom altijd **importeren in een werkende lokale installatie**, nooit een volledige profielvervanging.
-
-## 3. Beoogde pakketindeling
-
-Elke back-up krijgt een zelfstandig, versieerbaar pakket:
+## 3. Versioned backup package
 
 ```text
 Codex-PortableBackup-YYYYMMDD-HHMMSS/
@@ -58,9 +53,6 @@ Codex-PortableBackup-YYYYMMDD-HHMMSS/
 │   ├── path-mappings.json
 │   └── sha256.csv
 ├── projects/
-│   ├── project-001/
-│   ├── project-002/
-│   └── ...
 ├── codex/
 │   ├── state.snapshot.sqlite
 │   ├── sessions/
@@ -68,234 +60,108 @@ Codex-PortableBackup-YYYYMMDD-HHMMSS/
 │   ├── session_index.jsonl
 │   └── portable-global-state.json
 ├── attachments/
-├── tools/
-│   ├── Backup-Codex.ps1
-│   ├── Controleer-CodexBackup.ps1
-│   ├── Herstel-Codex.ps1
-│   └── Merge-CodexData.py
 └── reports/
 ```
 
-`package.json` bevat minimaal:
+The package manifest records the format and tool version, creation date, source
+profile, Codex version, database schema, original project paths, counts, size,
+required free space, SQLite health, completion state and hash manifest.
 
-- formaat- en scriptversie;
-- datum, broncomputer en bronprofiel;
-- Codex-appversie en databaseschemaversie;
-- lijst met projecten en oorspronkelijke paden;
-- aantallen chats, sessiebestanden en bijlagen;
-- totale grootte en vrije-ruimtevereiste;
-- resultaat van SQLite `quick_check`;
-- status `complete` of `incomplete`;
-- gebruikte hashmanifesten.
+## 4. Standard workflow
 
-## 4. Standaardwerkwijze
+### Backup
 
-### Back-up maken
+1. Inventory projects, conversations, attachments, versions and free space.
+2. Require Codex to be fully closed before the final snapshot.
+3. Use the SQLite Backup API instead of blindly copying active database files.
+4. Copy project and session data into a temporary package.
+5. Record SHA-256 for every package file.
+6. Validate the complete temporary package independently.
+7. Mark and rename it as complete only after validation succeeds.
 
-1. Start `MAAK-Codex-backup.cmd`.
-2. Het programma inventariseert projecten, chats, bijlagen, versies en vrije ruimte.
-3. Codex moet volledig worden afgesloten voordat de definitieve snapshot begint.
-4. SQLite wordt via de SQLite Backup API naar een consistente snapshot geschreven. Database-, WAL- en SHM-bestanden worden niet blind gekopieerd.
-5. Projectbestanden en sessiebestanden worden naar een tijdelijke pakketmap gekopieerd.
-6. Voor ieder bestand wordt een SHA-256-hash vastgelegd.
-7. De tijdelijke pakketmap wordt volledig gecontroleerd.
-8. Alleen na een geslaagde controle krijgt het pakket `BackupComplete: true` en zijn definitieve naam.
-9. Er verschijnt een kort rapport met `GESLAAGD`, aantallen en pakketlocatie.
+### Backup validation
 
-### Back-up controleren
+1. Validate manifests, hashes, counts and database references without writing.
+2. Require every database conversation to have the expected rollout data.
+3. Require valid JSON metadata and matching conversation IDs.
+4. Require SQLite `quick_check` to return `ok`.
 
-1. Start `CONTROLEER-Codex-backup.cmd` op de USB-schijf.
-2. Alle manifesten, hashes, aantallen en databaseverwijzingen worden gecontroleerd.
-3. Iedere thread moet exact één bestaand rolloutbestand hebben.
-4. Iedere rollout moet geldige JSON-metadata en de juiste thread-id bevatten.
-5. SQLite `quick_check` moet `ok` retourneren.
-6. De controle wijzigt niets.
+### Restore
 
-### Herstellen op een andere computer
+1. Install Codex, open it once, sign in and close it fully.
+2. Validate the backup before making any destination changes.
+3. Translate source profile paths to the destination Windows profile.
+4. Create a consistent rollback copy of the current destination state.
+5. Restore projects, sessions and portable profile data.
+6. Import database rows using columns understood by both schemas.
+7. Preserve destination authentication and machine identity.
+8. Run complete final verification before Codex is restarted.
 
-1. Installeer en open Codex eenmaal op de doelcomputer.
-2. Meld aan en maak eventueel één testchat.
-3. Sluit Codex volledig.
-4. Start `CONTROLEER-Codex-herstel.cmd`.
-5. Kies of bevestig nieuwe projectpaden; gebruikersprofielpaden worden automatisch voorgesteld.
-6. Start `HERSTEL-Codex.cmd`.
-7. Maak eerst een consistente terugrolkopie van de huidige database en UI-status.
-8. Kopieer project- en sessiebestanden zonder afwijkende bestaande bestanden te overschrijven.
-9. Importeer ontbrekende threads transactief in de huidige databaseschema-versie.
-10. Voeg projecten en projectroots toe en koppel threads op basis van expliciete metadata en `cwd`.
-11. Vertaal alleen padvelden; chatinhoud blijft ongewijzigd.
-12. Voeg de overdraagbare delen van de UI-status samen.
-13. Voer de volledige eindcontrole uit.
-14. Start Codex pas opnieuw nadat het rapport `GESLAAGD` meldt.
+## 5. Delivery phases
 
-## 5. Roadmap per fase
+### Phase 0 — Specification and baseline
 
-### Fase 0 — Specificatie en nulmeting
+Classify every portable and machine-specific item, document SQLite structures,
+define path mappings and freeze backup package format 2.0.
 
-Doel: het back-upformaat en alle grenzen formeel vastleggen.
+Acceptance: every included and excluded item has a documented reason, and no
+source credentials are required for restoration.
 
-Werk:
+### Phase 1 — Backup generator 2.0
 
-- draagbare en machinegebonden Codex-bestanden classificeren;
-- huidige SQLite-tabellen en relevante kolommen documenteren;
-- projectdetectie baseren op `projects`, `project_roots`, thread-`cwd` en globale projectstatus;
-- padmapping als expliciet onderdeel van het manifest ontwerpen;
-- regels vastleggen voor ontbrekende historische bijlagen;
-- pakketversie `2.0` definiëren.
+Implement automatic project discovery, optional extra directories, safe process
+checks, consistent SQLite snapshots, portable state export, attachment inventory,
+SHA-256 manifests, atomic completion and clear reports.
 
-Acceptatie:
+Acceptance: interrupted backups are never complete, source files remain unchanged,
+and every completed backup immediately passes independent validation.
 
-- ieder opgenomen bestand heeft een reden;
-- ieder uitgesloten bestand heeft een veiligheidsreden;
-- herstellen vereist nooit broncomputercredentials.
+### Phase 2 — Restore/import engine 2.0
 
-### Fase 1 — Back-upgenerator 2.0
+Implement path mapping, free-space and compatibility checks, destination conflict
+handling, schema-aware SQLite import, idempotency, an import journal, resumability,
+rollback and complete final reporting.
 
-Doel: met één starter een consistente, zelfcontrolerende back-up maken.
+Acceptance: repeated restoration creates no duplicates; existing destination data,
+authentication and identity remain valid; every project and conversation opens;
+and injected failures leave a recoverable state.
 
-Werk:
+### Phase 3 — Automated compatibility matrix
 
-- automatische projectinventarisatie;
-- aanvullende mappen via een configuratiebestand;
-- veilige Codex-procescontrole;
-- consistente SQLite Backup API-snapshot;
-- export van overdraagbare globale status;
-- sessie- en attachment-inventarisatie;
-- SHA-256-manifest;
-- tijdelijke opbouw en atomische voltooiing;
-- duidelijke voortgang, rapporten en foutlogs.
+Test empty and populated destinations, different usernames and drives, newer and
+older schemas, repeated restoration, forced interruption, damaged sessions,
+missing attachments, conflicting project files and insufficient disk space.
 
-Acceptatie:
+Acceptance: every release runs the same disposable test suite and stores both
+machine-readable and human-readable results.
 
-- een onderbroken back-up krijgt nooit status `complete`;
-- de bronbestanden worden niet gewijzigd;
-- een voltooide back-up slaagt direct voor de onafhankelijke controle.
+### Phase 4 — Ease of use
 
-### Fase 2 — Herstel/importeur 2.0
+Deliver a one-click graphical workflow, clear progress, actionable errors, a fixed
+log location and a final summary of projects, conversations, files, hashes and
+warnings. A normal user must never rename or delete `.codex` directories manually.
 
-Doel: veilig importeren in een bestaande, werkende Codex-installatie.
+### Phase 5 — Maintenance and distribution
 
-Werk:
+Maintain semantic versions and a changelog, run periodic test restores, document
+backup retention, keep copies on separate physical media, publish signed releases
+when practical, and maintain discoverable English documentation.
 
-- interactieve of configureerbare padmapping;
-- vrije-ruimte- en versiecontrole;
-- controle op afwijkende bestaande projectbestanden;
-- transactieve, schema-bewuste SQLite-merge;
-- idempotente thread-, project- en sessie-import;
-- importjournal met statussen per stap;
-- hervatten vanaf de laatste volledig afgeronde stap;
-- consistente rollbackdatabase;
-- geen Python via `python -c`; altijd een echt `.py`-helperbestand;
-- eindrapport met aantallen en ontbrekende verwijzingen.
+## 6. Safety rules
 
-Acceptatie:
+1. Never restore while Codex is running.
+2. Never replace the destination's complete `.codex` directory.
+3. Never migrate authentication, installation IDs or caches.
+4. Never copy an active SQLite database as a lone file.
+5. Never silently overwrite conflicting project data.
+6. Never continue after failed hash or database validation.
+7. Never call a backup complete before independent verification.
+8. Never remove the safety copy automatically after a successful restore.
 
-- tweemaal uitvoeren veroorzaakt geen duplicaten;
-- bestaande chats blijven behouden;
-- authenticatie en installatie-identiteit blijven behouden;
-- iedere database-thread heeft een bestaand rolloutbestand;
-- alle vier projectgroepen zijn zichtbaar en te openen;
-- afbreken op ieder testpunt laat een hervatbare toestand achter.
+## 7. Definition of done
 
-### Fase 3 — Geautomatiseerde testmatrix
-
-Doel: “werkt op mijn computer” vervangen door aantoonbare compatibiliteit.
-
-Minimale tests:
-
-| Scenario | Verwacht resultaat |
-|---|---|
-| Zelfde computer, lege installatie | Volledige import |
-| Andere Windows-gebruikersnaam | Alle profielpaden vertaald |
-| Andere projectschijf of hoofdmap | Mapping correct toegepast |
-| Nieuwere Codex-versie op doelcomputer | Import in het nieuwe schema |
-| Bestaande chats op doelcomputer | Behouden en samengevoegd |
-| Herstel tweemaal uitvoeren | Geen duplicaten |
-| Stroomonderbreking na projectkopie | Hervatten bij database-import |
-| Onderbreking tijdens database-import | Transactierollback |
-| Beschadigd sessiebestand | Vooraf blokkeren met duidelijke melding |
-| Ontbrekende historische bijlage | Waarschuwing, chats blijven bruikbaar |
-| Afwijkend bestaand projectbestand | Niet overschrijven; menselijke keuze vereist |
-| Onvoldoende schijfruimte | Stoppen vóór wijzigingen |
-
-Acceptatie:
-
-- alle tests draaien tegen een wegwerpomgeving;
-- iedere release van de scripts doorloopt dezelfde tests;
-- testresultaten worden als JSON en leesbaar rapport opgeslagen.
-
-### Fase 4 — Gebruiksgemak
-
-Doel: de handeling geschikt maken voor normaal dagelijks gebruik.
-
-Oplevering:
-
-- `MAAK-Codex-backup.cmd`;
-- `CONTROLEER-Codex-backup.cmd`;
-- `HERSTEL-Codex.cmd`;
-- `HERVAT-Codex-herstel.cmd`;
-- `CONTROLEER-Codex-herstel.cmd`;
-- één configuratiebestand voor extra projectmappen;
-- één Nederlandstalige handleiding;
-- vaste foutloglocatie;
-- afsluitende samenvatting: projecten, chats, bestanden, hashes en waarschuwingen.
-
-Acceptatie:
-
-- de normale gebruiker hoeft geen PowerShell-commando te typen;
-- iedere foutmelding noemt de stap, oorzaak en concrete vervolgactie;
-- de gebruiker hoeft nooit `.codex`-mappen handmatig te hernoemen of verwijderen.
-
-### Fase 5 — Codex-skill en beheer
-
-Doel: de procedure duurzaam en vindbaar maken.
-
-Werk:
-
-- na stabilisatie een persoonlijke `codex-backup-herstel`-skill maken;
-- de skill laat Codex eerst inventariseren en daarna uitsluitend de geteste tools gebruiken;
-- versienummering en changelog toevoegen;
-- elk kwartaal een proefherstel naar een lege testmap uitvoeren;
-- oude back-ups volgens een retentiebeleid verwijderen;
-- minimaal twee back-ups bewaren op verschillende fysieke locaties.
-
-De officiële OpenAI-workflows noemen zowel herhaalbare skills als geverifieerde operaties als geschikte patronen voor terugkerende werkprocessen: https://learn.chatgpt.com/use-cases
-
-## 6. Veiligheidsregels
-
-1. Nooit herstellen terwijl Codex draait.
-2. Nooit de volledige `.codex`-map van een andere computer over de lokale map kopiëren.
-3. Nooit `auth.json`, installatie-id's of caches migreren.
-4. Nooit een actieve SQLite-database alleen als los `.sqlite`-bestand kopiëren.
-5. Nooit bestaande afwijkende projectbestanden stil overschrijven.
-6. Nooit doorgaan na een mislukte hash- of databasecontrole.
-7. Nooit een back-up `complete` noemen vóór de onafhankelijke eindcontrole.
-8. Nooit een veiligheidskopie verwijderen voordat Codex meerdere keren correct is gestart.
-
-## 7. Definition of Done
-
-De oplossing is pas definitief wanneer:
-
-- back-up, controle, herstel en hervatten afzonderlijke commando's zijn;
-- de back-up een versieerbaar en gedocumenteerd formaat heeft;
-- alle bestanden een hash hebben;
-- SQLite-snapshots consistent zijn;
-- herstel idempotent en transactief is;
-- bron- en doelgebruikersnaam mogen verschillen;
-- bestaande doelcomputerdata behouden blijft;
-- rollback aantoonbaar werkt;
-- alle testmatrixscenario's slagen;
-- een niet-technische gebruiker alleen de `.cmd`-starters nodig heeft;
-- een proefherstelrapport alle verwachte chats en projecten bevestigt.
-
-## 8. Aanbevolen uitvoeringsvolgorde
-
-1. Fase 0 afronden en pakketformaat 2.0 bevriezen.
-2. Back-upgenerator en onafhankelijke validator bouwen.
-3. Eerst testfixtures en foutinjectietests toevoegen.
-4. Herstel/importeur bouwen op basis van de bewezen merge-aanpak.
-5. Hervatten en rollback testen door geforceerde onderbrekingen.
-6. Eén volledige migratie van hoofdcomputer naar laptop uitvoeren.
-7. Pas daarna de eenvoudige starters en persoonlijke Codex-skill publiceren.
-
-De eerstvolgende concrete oplevering hoort dus **Back-upgenerator 2.0 + onafhankelijke validator** te zijn. Een hersteltool is alleen betrouwbaar wanneer het bronpakket vooraf aantoonbaar consistent is.
+The product is complete when backup, validation, restore and verification are
+separate operations; packages are versioned and fully hashed; SQLite snapshots are
+consistent; restoration is transactional; different usernames and paths work;
+destination identity is preserved; rollback is proven; the compatibility matrix
+passes; and a non-technical user can complete the workflow through the GUI alone.

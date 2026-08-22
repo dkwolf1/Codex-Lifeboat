@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible backup, validation or restore problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not attach real backups, auth.json files, API keys or private project data."
+  - type: input
+    id: version
+    attributes:
+      label: Assistant version
+      placeholder: "3.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows version
+      options: ["Windows 11", "Windows 10"]
+    validations:
+      required: true
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Operation
+      options: ["Backup", "Backup validation", "Restore", "Restore verification", "Application startup"]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the exact error after removing personal or secret information.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true

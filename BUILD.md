@@ -1,23 +1,23 @@
-# Bouwen en testen
+# Build and test
 
-Vereisten voor ontwikkelaars: Windows 10/11 en Python 3.11 of nieuwer. De
-vastgezette versie van PyInstaller wordt automatisch in een lokale virtuele
-omgeving geïnstalleerd.
+Developer requirements: Windows 10/11 and Python 3.11 or newer. The pinned
+PyInstaller version is installed automatically in a repository-local virtual
+environment.
 
-## Zelftest
+## Run the end-to-end self-test
 
 ```powershell
 .\test.ps1
 ```
 
-## Volledige release bouwen
+## Build the complete portable release
 
 ```powershell
 .\build.ps1
 ```
 
-Het buildscript voert eerst de volledige zelftest uit. Alleen daarna bouwt het de
-zelfstandige `.exe`, maakt het een portable zip en schrijft het SHA-256-checksums.
-Tijdelijke bestanden komen onder `.build` en worden niet door Git gevolgd.
+The build script runs the complete self-test before creating any release. It then
+builds the standalone `.exe`, creates a portable zip and writes SHA-256 checksums.
+Temporary files are stored under `.build` and ignored by Git.
 
-De eindgebruiker heeft Python en PyInstaller niet nodig.
+End users do not need Python, PyInstaller, an installer or administrator rights.

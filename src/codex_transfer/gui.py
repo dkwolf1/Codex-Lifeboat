@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import locale
 import os
 import queue
 import tempfile
@@ -81,8 +80,7 @@ TEXT = {
 class TransferApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        default_language = "nl" if (locale.getdefaultlocale()[0] or "").lower().startswith("nl") else "en"
-        self.language = tk.StringVar(value=default_language)
+        self.language = tk.StringVar(value="en")
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
         self.last_package: Path | None = None
@@ -112,9 +110,9 @@ class TransferApp(tk.Tk):
             header,
             state="readonly",
             width=12,
-            values=("Nederlands", "English"),
+            values=("English", "Nederlands"),
         )
-        self.language_box.current(0 if self.language.get() == "nl" else 1)
+        self.language_box.current(0 if self.language.get() == "en" else 1)
         self.language_box.grid(row=0, column=2)
         self.language_box.bind("<<ComboboxSelected>>", self._change_language)
 
@@ -169,7 +167,7 @@ class TransferApp(tk.Tk):
         self.log.configure(yscrollcommand=scroll.set)
 
     def _change_language(self, _event=None) -> None:
-        self.language.set("nl" if self.language_box.current() == 0 else "en")
+        self.language.set("en" if self.language_box.current() == 0 else "nl")
         self._translate()
 
     def _translate(self) -> None:
@@ -292,7 +290,7 @@ class TransferApp(tk.Tk):
             return
 
         def work():
-            config_root = Path(tempfile.gettempdir()) / "Codex-Overzetassistent"
+            config_root = Path(tempfile.gettempdir()) / "Codex-Transfer-Assistant"
             config_root.mkdir(parents=True, exist_ok=True)
             config_path = config_root / "backup-config.json"
             config_path.write_text(

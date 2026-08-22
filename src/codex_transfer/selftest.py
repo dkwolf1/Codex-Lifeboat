@@ -316,7 +316,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         else Path(tempfile.mkdtemp(prefix="codex-transfer-selftest-"))
     )
     if root.exists() and any(root.iterdir()):
-        raise RuntimeError(f"Self-testwerkmap moet leeg zijn: {root}")
+        raise RuntimeError(f"Self-test work directory must be empty: {root}")
     root.mkdir(parents=True, exist_ok=True)
     source_profile = root / "source-user"
     target_profile = root / "target-user"

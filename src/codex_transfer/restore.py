@@ -59,14 +59,14 @@ def _safe_target(path: Path, profile: Path) -> None:
         windows.desktop_folder(profile).resolve(strict=False),
     }
     if resolved in allowed_roots or resolved == Path(resolved.anchor):
-        raise RestoreError(f"Onveilig breed doelpad geweigerd: {resolved}")
+        raise RestoreError(f"Unsafe broad destination path rejected: {resolved}")
     for allowed in allowed_roots:
         try:
             resolved.relative_to(allowed)
             return
         except ValueError:
             continue
-    raise RestoreError(f"Doelpad valt buiten het doelprofiel: {resolved}")
+    raise RestoreError(f"Destination path is outside the destination profile: {resolved}")
 
 
 def _copy_all(source: Path, destination: Path) -> tuple[int, int]:
@@ -118,14 +118,14 @@ def prepare_restore(
     target_codex = target_profile / ".codex"
     result = validate(package_root, False)
     if not result.get("valid"):
-        raise RestoreError("De gekozen back-up is ongeldig: " + "; ".join(result["errors"][:5]))
+        raise RestoreError("The selected backup is invalid: " + "; ".join(result["errors"][:5]))
     if not target_codex.is_dir() or not (target_codex / "state_5.sqlite").is_file():
         raise RestoreError(
             "Codex is nog niet eenmaal gestart op deze computer. Installeer, open en sluit Codex eerst."
         )
     if not (target_codex / "auth.json").is_file():
         raise RestoreError(
-            "Geen lokale Codex-aanmelding gevonden. Open Codex, meld aan en sluit de app volledig."
+            "No local Codex authentication found. Open Codex, sign in and fully close the app."
         )
     backup.check_codex_not_running(target_codex, allow_running_test)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -133,7 +133,7 @@ def prepare_restore(
     if safety_root.exists():
         safety_root = safety_root.with_name(safety_root.name + "-" + uuid.uuid4().hex[:6])
     if progress:
-        progress(f"Veiligheidskopie maken: {safety_root}")
+        progress(f"Creating safety copy: {safety_root}")
     _copy_codex_safety(target_codex, safety_root / "codex-before-restore")
     target_connection = sqlite3.connect(target_codex / "state_5.sqlite")
     try:
@@ -423,7 +423,7 @@ def _build_restored_database(
         connection.execute("DETACH DATABASE src")
         check = backup.sqlite_quick_check(connection)
         if check != "ok":
-            raise RestoreError(f"Herstelde database faalt quick_check: {check}")
+            raise RestoreError(f"Restored database failed quick_check: {check}")
         counts["finalThreads"] = int(
             connection.execute("SELECT count(*) FROM threads").fetchone()[0]
         )
@@ -545,12 +545,12 @@ def _restore_projects(
         if target.exists():
             safety = safety_root / record["safetyRelativePath"]
             if progress:
-                progress(f"Bestaand project veiligstellen: {target}")
+                progress(f"Securing existing project: {target}")
             _copy_all(target, safety)
             _remove_path(target)
         project_journal.append(record)
         if progress:
-            progress(f"Project herstellen: {target}")
+            progress(f"Restoring project: {target}")
         files, _ = _copy_all(source, target)
         copied += files
     return copied
@@ -606,7 +606,7 @@ def verify_restored(
             checks["threads"] = thread_count
             if thread_count != int(package["counts"]["threads"]):
                 errors.append(
-                    f"Threadaantal {thread_count} wijkt af van back-up {package['counts']['threads']}"
+                    f"Conversation count {thread_count} differs from backup {package['counts']['threads']}"
                 )
             rollout_rows = connection.execute("SELECT id,rollout_path FROM threads").fetchall()
         finally:
@@ -618,9 +618,9 @@ def verify_restored(
                 continue
             rollout_id, rollout_error = backup.parse_session_meta(path)
             if rollout_error or rollout_id != str(thread_id):
-                errors.append(f"Rollout-id ongeldig voor {thread_id}: {rollout_error or rollout_id}")
+                errors.append(f"Invalid rollout ID for {thread_id}: {rollout_error or rollout_id}")
     except Exception as exc:
-        errors.append(f"Databasecontrole mislukt: {exc}")
+        errors.append(f"Database validation failed: {exc}")
     projects = backup.read_json(package_root / "manifest" / "projects.json")
     expected_hashes: dict[str, str] = {}
     with (package_root / "manifest" / "sha256.csv").open(
@@ -632,12 +632,12 @@ def verify_restored(
     for item in projects:
         target = translator.project_targets[str(item["id"])]
         if not target.is_dir():
-            errors.append(f"Projectmap ontbreekt: {target}")
+            errors.append(f"Project directory missing: {target}")
             continue
         files = [path for path in target.rglob("*") if path.is_file()]
         size = sum(path.stat().st_size for path in files)
         if len(files) != int(item["fileCount"]):
-            errors.append(f"Bestandsaantal wijkt af voor project {target}")
+            errors.append(f"File count differs for project {target}")
         if size != int(item["totalBytes"]):
             errors.append(f"Byteaantal wijkt af voor project {target}")
         prefix = str(item["backupRelativePath"]).rstrip("/") + "/"
@@ -647,7 +647,7 @@ def verify_restored(
             project_relative = PurePosixPath(relative_path[len(prefix) :])
             target_file = target / Path(*project_relative.parts)
             if not target_file.is_file():
-                errors.append(f"Projectbestand ontbreekt: {target_file}")
+                errors.append(f"Project file missing: {target_file}")
             elif backup.sha256_file(target_file) != expected_hash:
                 errors.append(f"Projecthash wijkt af: {target_file}")
         checked_projects += 1
@@ -669,7 +669,7 @@ def restore_backup(
     journal_path = safety_root / "restore-journal.json"
     journal = backup.read_json(journal_path)
     if journal.get("status") != "prepared":
-        raise RestoreError("Veiligheidskopie is niet in status prepared.")
+        raise RestoreError("Safety copy is not in prepared status.")
     translator = PathTranslator(package_root, target_profile)
     auth_path = target_codex / "auth.json"
     auth_hash_before = backup.sha256_file(auth_path)
@@ -683,7 +683,7 @@ def restore_backup(
         )
         backup.write_json(journal_path, journal)
         if progress:
-            progress("Doeldatabase schema-bewust opbouwen...")
+            progress("Building destination database with schema awareness...")
         database_counts = _build_restored_database(
             package_root,
             safety_root / "codex-before-restore" / "state_5.sqlite",
@@ -693,10 +693,10 @@ def restore_backup(
         if fail_after_database_for_test:
             raise RestoreError("Opzettelijke foutinjectie na database-opbouw")
         if progress:
-            progress("Lokale Codex-gebruikersdata vervangen...")
+            progress("Replacing local portable Codex user data...")
         _purge_target_portable_data(target_codex)
         target_codex.mkdir(parents=True, exist_ok=True)
-        # Machine-identiteit en aanmelding komen uit de veiligheidskopie terug.
+        # Restore machine identity and authentication from the safety copy.
         safety_codex = safety_root / "codex-before-restore"
         for protected_name in PROTECTED_NAMES:
             source = safety_codex / protected_name
@@ -714,10 +714,10 @@ def restore_backup(
         if backup.sha256_file(target_codex / "auth.json") != auth_hash_before:
             raise RestoreError("Lokale aanmelding is onverwacht gewijzigd.")
         if progress:
-            progress("Volledige eindcontrole uitvoeren...")
+            progress("Running complete final verification...")
         verification = verify_restored(package_root, target_profile, translator)
         if not verification["valid"]:
-            raise RestoreError("Eindcontrole mislukt: " + "; ".join(verification["errors"][:5]))
+            raise RestoreError("Final verification failed: " + "; ".join(verification["errors"][:5]))
         journal.update(
             {
                 "status": "complete",
@@ -745,6 +745,6 @@ def restore_backup(
         journal["error"] = traceback.format_exc()
         backup.write_json(journal_path, journal)
         if progress:
-            progress("Herstel mislukt; automatische rollback uitvoeren...")
+            progress("Restore failed; running automatic rollback...")
         rollback_restore(safety_root, target_profile)
         raise

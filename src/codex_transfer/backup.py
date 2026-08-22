@@ -169,7 +169,7 @@ def create_snapshot(source: Path, destination: Path) -> dict[str, Any]:
     source_check = sqlite_quick_check(source_connection)
     if source_check != "ok":
         source_connection.close()
-        raise BackupError(f"Bron-database faalt PRAGMA quick_check: {source_check}")
+        raise BackupError(f"Source database failed PRAGMA quick_check: {source_check}")
     target_connection = sqlite3.connect(destination)
     try:
         source_connection.backup(target_connection)
@@ -188,7 +188,7 @@ def create_snapshot(source: Path, destination: Path) -> dict[str, Any]:
             )
         }
         if "threads" not in tables:
-            raise BackupError("Snapshot bevat geen tabel 'threads'.")
+            raise BackupError("Snapshot does not contain a 'threads' table.")
         migration_count = (
             snapshot.execute("SELECT count(*) FROM _sqlx_migrations").fetchone()[0]
             if "_sqlx_migrations" in tables
@@ -277,7 +277,7 @@ def copy_tree(
         try:
             entries = list(os.scandir(current_source))
         except OSError as exc:
-            raise BackupError(f"Kan map niet lezen: {current_source}: {exc}") from exc
+            raise BackupError(f"Cannot read directory: {current_source}: {exc}") from exc
         for entry in entries:
             entry_source = Path(entry.path)
             entry_destination = current_destination / entry.name
@@ -297,9 +297,9 @@ def copy_tree(
                     count += 1
                     byte_count += size
                     if count % 1000 == 0:
-                        log(f"  ... {count} bestanden gekopieerd uit {source.name}")
+                        log(f"  ... copied {count} files from {source.name}")
             except OSError as exc:
-                raise BackupError(f"Kopiëren mislukt voor {entry_source}: {exc}") from exc
+                raise BackupError(f"Copy failed for {entry_source}: {exc}") from exc
     return count, byte_count
 
 
@@ -343,7 +343,7 @@ def parse_session_meta(path: Path) -> tuple[str | None, str | None]:
             return None, "eerste regel is niet van type session_meta"
         thread_id = (value.get("payload") or {}).get("id")
         if not thread_id:
-            return None, "session_meta bevat geen payload.id"
+            return None, "session_meta does not contain payload.id"
         return str(thread_id), None
     except Exception as exc:  # exact error belongs in the report
         return None, str(exc)
@@ -447,9 +447,9 @@ def collect_project_candidates(
                 False,
             )
     # Chats zonder formele projectkoppeling kunnen nog steeds in een echte
-    # projectmap zijn uitgevoerd. Zoek dan eerst naar de dichtstbijzijnde .git-root;
+    # project directory. Prefer the nearest .git root;
     # anders gebruik de concrete cwd. Brede profiel- of schijfroots worden later
-    # door de veiligheidscontrole geweigerd.
+    # otherwise be rejected by the safety check.
     existing_roots = list(candidates)
     for thread in database_info.get("threads", []):
         cwd_value = thread.get("cwd")
@@ -570,7 +570,7 @@ def copy_projects(
             continue
         if broad_or_unsafe_project_path(source, source_profile, codex_home):
             raise BackupError(
-                f"Onveilig breed projectpad geweigerd: {source}. Kies een concrete projectmap."
+                f"Unsafe broad project path rejected: {source}. Select a specific project directory."
             )
         package_resolved = package_root.resolve(strict=False)
         source_resolved = source.resolve(strict=False)
@@ -578,9 +578,9 @@ def copy_projects(
             normalized_source_key(source_resolved) + os.sep
         ):
             raise BackupError(
-                f"De tijdelijke back-upmap ligt binnen projectbron {source}; dit zou recursief kopiëren."
+                f"The temporary backup directory is inside project source {source}; this would recurse."
             )
-        log(f"Project kopiëren: {source}")
+        log(f"Copying project: {source}")
         file_count, byte_count = copy_tree(
             source, package_root / relative, exclude_fragments, warnings
         )
@@ -641,7 +641,7 @@ def copy_attachments(
     )
     copied: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
-    log("Lokale chatbijlagen inventariseren...")
+    log("Inventorying local conversation attachments...")
     for original in sorted(find_attachment_paths(session_files), key=str.lower):
         source = clean_windows_path(original)
         attachment_id = stable_id(source)
@@ -688,14 +688,14 @@ def copy_extras(
         mappings.append(mapping)
         if not exists:
             if item.get("required", True):
-                raise BackupError(f"Verplichte extra bron bestaat niet: {source}")
-            warnings.append(f"Optionele extra bron bestaat niet: {source}")
+                raise BackupError(f"Required extra source does not exist: {source}")
+            warnings.append(f"Optional extra source does not exist: {source}")
             continue
         if normalized_source_key(package_root).startswith(
             normalized_source_key(source) + os.sep
         ):
             raise BackupError(
-                f"De tijdelijke back-upmap ligt binnen extra bron {source}; dit zou recursief kopiëren."
+                f"The temporary backup directory is inside extra source {source}; this would recurse."
             )
         if source.is_dir():
             count, size = copy_tree(source, package_root / relative, [], warnings)
@@ -705,7 +705,7 @@ def copy_extras(
             count, size = 1, source.stat().st_size
             mapping["backupRelativePath"] = portable_relative(destination, package_root)
         else:
-            warnings.append(f"Niet-reguliere extra bron overgeslagen: {source}")
+            warnings.append(f"Skipped non-regular extra source: {source}")
             continue
         records.append(
             {
@@ -773,10 +773,10 @@ def copy_toolkit(package_root: Path, toolkit_root: Path) -> None:
         if source.is_file():
             copy_file(source, package_spec / source.name)
     # Een PyInstaller-build neemt zichzelf mee, zodat dezelfde USB direct op de
-    # doelcomputer kan worden gebruikt voor controle en herstel.
+    # destination computer for validation and restoration.
     if getattr(sys, "frozen", False):
         executable = Path(sys.executable)
-        copy_file(executable, package_tools / "Codex-Overzetassistent.exe")
+        copy_file(executable, package_tools / "Codex-Transfer-Assistant.exe")
 
 
 def create_hash_manifest(package_root: Path) -> tuple[int, int, str]:
@@ -801,7 +801,7 @@ def create_hash_manifest(package_root: Path) -> tuple[int, int, str]:
             writer.writerow((portable_relative(path, package_root), size, sha256_file(path)))
             total_bytes += size
             if index % 1000 == 0:
-                log(f"  ... {index} bestanden gehasht")
+                log(f"  ... hashed {index} files")
     return len(paths), total_bytes, sha256_file(manifest_path)
 
 
@@ -825,7 +825,7 @@ def run_validator(package_root: Path, validator: Path, allow_building: bool) -> 
         if not result.get("valid"):
             for error in result.get("errors", []):
                 log(f"FOUT: {error}")
-            raise BackupError("Onafhankelijke pakketcontrole is mislukt.")
+            raise BackupError("Independent package validation failed.")
         return
     command = [sys.executable, str(validator), str(package_root)]
     if allow_building:
@@ -833,13 +833,13 @@ def run_validator(package_root: Path, validator: Path, allow_building: bool) -> 
     completed = subprocess.run(command, text=True, check=False)
     if completed.returncode != 0:
         raise BackupError(
-            f"Onafhankelijke pakketcontrole is mislukt (code {completed.returncode})."
+            f"Independent package validation failed (code {completed.returncode})."
         )
 
 
 def load_config(path: Path) -> dict[str, Any]:
     if not path.is_file():
-        raise BackupError(f"Configuratiebestand niet gevonden: {path}")
+        raise BackupError(f"Configuration file not found: {path}")
     config = read_json(path)
     if config.get("configVersion") != 1:
         raise BackupError("backup-config.json moet configVersion 1 hebben.")
@@ -869,14 +869,14 @@ def build_backup(args: argparse.Namespace) -> Path:
         args.destination or str(config.get("destinationRoot", "D:\\Codex-Backups"))
     ).resolve(strict=False)
     if not source_codex.is_dir():
-        raise BackupError(f"Codex-bronmap niet gevonden: {source_codex}")
+        raise BackupError(f"Codex source directory not found: {source_codex}")
     source_db = source_codex / "state_5.sqlite"
     if not source_db.is_file():
-        raise BackupError(f"Codex-database niet gevonden: {source_db}")
+        raise BackupError(f"Codex database not found: {source_db}")
     check_codex_not_running(source_codex, bool(args.allow_running_test))
     destination_root.mkdir(parents=True, exist_ok=True)
     if normalized_source_key(destination_root).startswith(normalized_source_key(source_codex) + os.sep):
-        raise BackupError("De doelmap mag niet binnen de Codex-bronmap liggen.")
+        raise BackupError("The destination directory cannot be inside the Codex source directory.")
 
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     final_name = f"Codex-PortableBackup-{stamp}"
@@ -889,12 +889,12 @@ def build_backup(args: argparse.Namespace) -> Path:
     warnings: list[str] = []
 
     try:
-        log(f"Tijdelijk pakket: {building}")
+        log(f"Temporary package: {building}")
         database_info = create_snapshot(
             source_db, building / "codex" / "state.snapshot.sqlite"
         )
         log(
-            f"SQLite-snapshot is consistent; {len(database_info['threads'])} threads gevonden."
+            f"SQLite snapshot is consistent; found {len(database_info['threads'])} conversations."
         )
         portable_state = export_portable_state(source_codex, building)
         portable_profile = copy_portable_codex_profile(source_codex, building, warnings)
@@ -921,7 +921,7 @@ def build_backup(args: argparse.Namespace) -> Path:
         if invalid_sessions:
             write_json(building / "reports" / "invalid-sessions.json", invalid_sessions)
             raise BackupError(
-                f"{len(invalid_sessions)} sessiebestand(en) hebben ongeldige metadata."
+                f"{len(invalid_sessions)} session file(s) contain invalid metadata."
             )
         thread_manifest: list[dict[str, Any]] = []
         missing_rollouts: list[str] = []
@@ -950,7 +950,7 @@ def build_backup(args: argparse.Namespace) -> Path:
                 {"missingThreadIds": missing_rollouts, "duplicateThreadIds": duplicate_rollouts},
             )
             raise BackupError(
-                f"Rolloutcontrole mislukt: {len(missing_rollouts)} ontbrekend, "
+                f"Rollout validation failed: {len(missing_rollouts)} missing, "
                 f"{len(duplicate_rollouts)} dubbel."
             )
 
@@ -1012,7 +1012,7 @@ def build_backup(args: argparse.Namespace) -> Path:
         write_json(building / "reports" / "backup-report.json", report)
         copy_toolkit(building, toolkit_root)
 
-        log("SHA-256-manifest maken...")
+        log("Creating SHA-256 manifest...")
         hashed_count, payload_bytes, hash_manifest_sha = create_hash_manifest(building)
         package = {
             "formatId": FORMAT_ID,
@@ -1056,20 +1056,20 @@ def build_backup(args: argparse.Namespace) -> Path:
         }
         write_package_manifest(building, package)
         validator = toolkit_root / "tools" / "validate_backup.py"
-        log("Onafhankelijke voorcontrole uitvoeren...")
+        log("Running independent preflight validation...")
         run_validator(building, validator, allow_building=True)
         package["backupComplete"] = True
         package["completedAtUtc"] = utc_now()
         write_package_manifest(building, package)
-        log("Definitieve onafhankelijke controle uitvoeren...")
+        log("Running final independent validation...")
         run_validator(building, validator, allow_building=False)
         os.replace(building, final_path)
         log("")
-        log("GESLAAGD")
-        log(f"Back-up: {final_path}")
+        log("PASSED")
+        log(f"Backup: {final_path}")
         log(
-            f"Threads: {len(thread_manifest)} | Projecten: {len(projects)} | "
-            f"Gehashte bestanden: {hashed_count} | Waarschuwingen: {len(warnings)}"
+            f"Conversations: {len(thread_manifest)} | Projects: {len(projects)} | "
+            f"Hashed files: {hashed_count} | Warnings: {len(warnings)}"
         )
         return final_path
     except Exception:
@@ -1085,7 +1085,7 @@ def build_backup(args: argparse.Namespace) -> Path:
         except Exception:
             pass
         log("")
-        log(f"MISLUKT. Tijdelijke map is bewaard: {building}")
+        log(f"FAILED. Temporary directory retained: {building}")
         log(f"Foutlog: {error_path}")
         raise
 

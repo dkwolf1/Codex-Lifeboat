@@ -12,9 +12,9 @@ try {
     $env:PYTHONPATH = Join-Path $repoRoot 'src'
     py -3 (Join-Path $repoRoot 'src\run_codex_transfer.py') --self-test --work $testRoot
     if ($LASTEXITCODE -ne 0) {
-        throw "De zelftest is mislukt (exitcode $LASTEXITCODE)."
+        throw "The self-test failed (exit code $LASTEXITCODE)."
     }
-    Write-Host "Zelftest geslaagd. Resultaat: $testRoot\self-test-result.json" -ForegroundColor Green
+    Write-Host "Self-test passed. Result: $testRoot\self-test-result.json" -ForegroundColor Green
 }
 finally {
     Pop-Location

@@ -104,7 +104,7 @@ def installed_codex_version() -> dict[str, Any]:
     return {
         "detected": False,
         "version": None,
-        "message": "ChatGPT/Codex AppX package niet gevonden",
+        "message": "ChatGPT/Codex AppX package not found",
     }
 
 

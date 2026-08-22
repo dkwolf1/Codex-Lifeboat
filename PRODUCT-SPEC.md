@@ -1,35 +1,35 @@
-# Productspecificatie 3.0
+# Product specification 3.0
 
-## Ondersteund
+## Supported environment
 
-- Windows 10 en Windows 11, 64-bit;
-- lokale Codex/ChatGPT-desktopinstallatie;
-- verschillende Windows-gebruikersnamen en bekende-maplocaties;
-- herstel van ouder naar nieuwer én nieuwer naar ouder schema op basis van
-  gemeenschappelijke SQLite-kolommen;
-- offline uitvoering met waarschuwing wanneer versiecontrole niet mogelijk is;
-- online best-effortcontrole via Microsoft Store/winget;
-- Nederlands en Engels;
-- uitvoering zonder administratorrechten, Python of installatieprogramma.
+- Windows 10 and Windows 11, 64-bit
+- Local Codex/ChatGPT desktop installation
+- Different Windows usernames and known-folder locations
+- Older-to-newer and newer-to-older migration through shared SQLite columns
+- Offline operation with a warning when version checking is unavailable
+- Best-effort online version checking through Microsoft Store/winget
+- English and Dutch user interfaces
+- Operation without administrator privileges, Python or an installer
 
-## Gebruikersbelofte
+## User promise
 
-Na een geslaagde eindcontrole bevat de doelcomputer dezelfde meegenomen
-projectbytes, chats, archieven, projectkoppelingen, beschikbare bijlagen, skills
-en draagbare instellingen als de broncomputer. Paden worden naar het nieuwe
-Windows-profiel vertaald. Aanmelding en computeridentiteit blijven van het doel.
+After successful final verification, the destination computer contains the same
+included project bytes, conversations, archives, project links, available
+attachments, skills and portable settings as the source. Paths are translated to
+the new Windows profile. Authentication and machine identity remain those of the
+destination computer.
 
-## Vier operaties
+## Four operations
 
-1. Back-up: consistente snapshot, volledige projectkopie en SHA-256-manifest.
-2. Back-upcontrole: read-only controle van hashes, SQLite, threads en projecten.
-3. Herstel: eerst veiligheidskopie en toestemming, daarna vervanging met rollback.
-4. Herstelcontrole: SQLite, thread-rollouts en projectbytes/hashes controleren.
+1. **Backup:** consistent snapshot, complete project copy and SHA-256 manifest.
+2. **Backup verification:** read-only verification of hashes, SQLite, conversations and projects.
+3. **Restore:** safety copy and consent first, replacement with automatic rollback second.
+4. **Restore verification:** validation of SQLite, conversation rollouts and project hashes.
 
-## Foutgedrag
+## Failure behavior
 
-- Een onderbroken back-up blijft `.building-*` en wordt nooit compleet genoemd.
-- Een beschadigde back-up wordt vóór herstel geweigerd.
-- Een niet-schoon doel wordt eerst veiliggesteld en expliciet gemeld.
-- Iedere fout tijdens herstel activeert automatische rollback.
-- Een veiligheidskopie wordt na succes niet automatisch verwijderd.
+- An interrupted backup remains `.building-*` and is never reported as complete.
+- A damaged backup is rejected before restoration begins.
+- Existing destination data is secured and explicitly reported first.
+- Any failure during restoration triggers automatic rollback.
+- A safety copy is never removed automatically after success.

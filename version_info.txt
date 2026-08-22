@@ -15,11 +15,11 @@ VSVersionInfo(
         u'040904B0',
         [
           StringStruct(u'CompanyName', u'Codex Transfer Assistant community project'),
-          StringStruct(u'FileDescription', u'Codex Overzetassistent / Transfer Assistant'),
+          StringStruct(u'FileDescription', u'Codex Transfer Assistant'),
           StringStruct(u'FileVersion', u'3.0.0'),
-          StringStruct(u'InternalName', u'Codex-Overzetassistent'),
-          StringStruct(u'OriginalFilename', u'Codex-Overzetassistent.exe'),
-          StringStruct(u'ProductName', u'Codex Overzetassistent'),
+          StringStruct(u'InternalName', u'Codex-Transfer-Assistant'),
+          StringStruct(u'OriginalFilename', u'Codex-Transfer-Assistant.exe'),
+          StringStruct(u'ProductName', u'Codex Transfer Assistant'),
           StringStruct(u'ProductVersion', u'3.0.0')
         ]
       )
