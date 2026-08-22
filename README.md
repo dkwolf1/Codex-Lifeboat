@@ -5,6 +5,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
 [![Latest release](https://img.shields.io/github/v/release/dkwolf1/Codex-Lifeboat?label=release)](https://github.com/dkwolf1/Codex-Lifeboat/releases/latest)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/ROADMAP.md)
 
@@ -89,3 +90,5 @@ The repository contains source code and documentation only. Ready-to-run binarie
 are distributed through [GitHub Releases](https://github.com/dkwolf1/Codex-Lifeboat/releases).
 
 Codex Lifeboat is an independent community project and is not an official OpenAI product.
+
+Released under the [MIT License](LICENSE).

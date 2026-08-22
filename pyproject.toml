@@ -3,6 +3,7 @@ name = "codex-lifeboat"
 version = "3.1.0"
 description = "One-click Codex backup, restore and Windows PC migration utility"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 keywords = [
   "codex",
@@ -23,6 +24,7 @@ classifiers = [
   "Operating System :: Microsoft :: Windows :: Windows 10",
   "Operating System :: Microsoft :: Windows :: Windows 11",
   "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
   "Topic :: System :: Archiving :: Backup",
   "Topic :: System :: Recovery Tools",
 ]
