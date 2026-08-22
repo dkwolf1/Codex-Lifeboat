@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.4 - 2026-08-23
+
+- Blocks execution directly from Windows Explorer's temporary ZIP preview and
+  gives explicit Extract All instructions.
+- Makes the transition from 100% hashing to independent verification visible.
+- Calculates the hash-manifest digest while writing it, avoiding a redundant
+  reopen at the phase boundary.
+
 ## 3.1.3 - 2026-08-23
 
 - Added live file, byte and percentage progress during hashing and validation.

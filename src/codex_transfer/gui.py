@@ -44,6 +44,8 @@ TEXT = {
         "version_warning": "Versiecontrole: {message}\n\nGeïnstalleerd: {installed}\nOnline gevonden: {latest}\n\nWilt u toch doorgaan?",
         "no_usb": "Geen verwisselbare USB-schijf automatisch gevonden; kies handmatig een map.",
         "detected_backup": "Back-up automatisch gevonden:\n\n{path}\n\nDeze gebruiken?",
+        "extract_required": "Codex Lifeboat is rechtstreeks vanuit het ZIP-bestand gestart.\n\nSluit dit venster, klik met rechts op de gedownloade ZIP, kies 'Alles uitpakken' en start Codex-Lifeboat.exe vanuit de uitgepakte map.",
+        "extract_status": "Pak de ZIP eerst volledig uit; starten vanuit de ZIP is geblokkeerd.",
     },
     "en": {
         "title": "Codex Lifeboat",
@@ -73,6 +75,8 @@ TEXT = {
         "version_warning": "Version check: {message}\n\nInstalled: {installed}\nOnline result: {latest}\n\nContinue anyway?",
         "no_usb": "No removable USB drive was detected automatically; select a folder manually.",
         "detected_backup": "Backup detected automatically:\n\n{path}\n\nUse this backup?",
+        "extract_required": "Codex Lifeboat was started directly from the ZIP file.\n\nClose this window, right-click the downloaded ZIP, select 'Extract All', and start Codex-Lifeboat.exe from the extracted folder.",
+        "extract_status": "Extract the ZIP completely first; running from inside the ZIP is blocked.",
     },
 }
 
@@ -83,6 +87,7 @@ class TransferApp(tk.Tk):
         self.language = tk.StringVar(value="en")
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
+        self.launch_blocked = windows.launched_from_compressed_folder()
         self.last_package: Path | None = None
         self.last_version_check: dict | None = None
         self.geometry("900x650")
@@ -91,6 +96,10 @@ class TransferApp(tk.Tk):
         self._translate()
         self.after(100, self._drain_messages)
         self.after(1000, self._refresh_drives)
+        if self.launch_blocked:
+            for button in self.action_buttons:
+                button.configure(state="disabled")
+            self.after(250, self._show_extract_required)
 
     def t(self, key: str, **values) -> str:
         return TEXT[self.language.get()][key].format(**values)
@@ -180,6 +189,11 @@ class TransferApp(tk.Tk):
         finally:
             self.after(2000, self._refresh_drives)
 
+    def _show_extract_required(self) -> None:
+        messagebox.showerror(
+            self.t("error"), self.t("extract_required"), parent=self
+        )
+
     def _translate(self) -> None:
         self.title(self.t("title"))
         self.title_label.configure(text=self.t("title"))
@@ -191,7 +205,10 @@ class TransferApp(tk.Tk):
         self.verify_backup_button.configure(text=self.t("verify_backup"))
         self.restore_button.configure(text=self.t("restore"))
         self.verify_restore_button.configure(text=self.t("verify_restore"))
-        self.status_label.configure(text=self.t("working") if self.busy else self.t("ready"))
+        if self.launch_blocked:
+            self.status_label.configure(text=self.t("extract_status"))
+        else:
+            self.status_label.configure(text=self.t("working") if self.busy else self.t("ready"))
 
     def _append_log(self, message: str) -> None:
         self.log.configure(state="normal")
@@ -227,7 +244,9 @@ class TransferApp(tk.Tk):
     def _set_busy(self, value: bool) -> None:
         self.busy = value
         for button in self.action_buttons:
-            button.configure(state="disabled" if value else "normal")
+            button.configure(
+                state="disabled" if value or self.launch_blocked else "normal"
+            )
         if value:
             self.progress.configure(mode="indeterminate", value=0)
             self.progress.start(10)
@@ -237,6 +256,9 @@ class TransferApp(tk.Tk):
         self._translate()
 
     def _run(self, function, done) -> None:
+        if self.launch_blocked:
+            self._show_extract_required()
+            return
         if self.busy:
             return
         self._set_busy(True)

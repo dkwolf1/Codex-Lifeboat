@@ -1,4 +1,4 @@
-# Test results 3.1.3
+# Test results 3.1.4
 
 Date: August 22, 2026
 Platform: Windows 11 build environment; target compatibility Windows 10/11 x64
@@ -18,6 +18,7 @@ The executable test did not use an external Python runtime.
 | Independent validation does not modify the package | Passed |
 | Hash and validation progress reaches 100% | Passed |
 | Unknown Store version does not block backup | Passed |
+| Direct execution from ZIP preview is detected and blocked | Passed |
 | Exact `.git`, `.env` and uncommitted project files | Passed |
 | Skills and portable Codex configuration restored | Passed |
 | Different source and destination usernames translated | Passed |

@@ -473,6 +473,14 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         and windows._include_as_usb_destination(windows.DRIVE_FIXED, True)
         and not windows._include_as_usb_destination(windows.DRIVE_FIXED, False)
     )
+    compressed_launch_detection = (
+        windows.launched_from_compressed_folder(
+            Path(tempfile.gettempdir()) / "portable.zip.123" / "Codex-Lifeboat.exe"
+        )
+        and not windows.launched_from_compressed_folder(
+            root / "extracted" / "Codex-Lifeboat.exe"
+        )
+    )
     checks = {
         "packageValid": package_validation["valid"],
         "snapshotUsesSingleFileJournal": snapshot_journal_mode == "delete",
@@ -483,6 +491,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "validationProgressComplete": validation_progress_complete,
         "unknownStoreVersionDoesNotWarn": unknown_version_does_not_warn,
         "usbDriveClassification": usb_classification,
+        "compressedFolderLaunchBlocked": compressed_launch_detection,
         "sourceUnchanged": source_before == source_after,
         "sourceAuthExcluded": not source_auth_in_package,
         "portableExecutableIncluded": portable_executable_included,

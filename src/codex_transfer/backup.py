@@ -26,7 +26,7 @@ from typing import Any, Callable, Iterable
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.0"
-GENERATOR_VERSION = "3.1.3"
+GENERATOR_VERSION = "3.1.4"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -854,9 +854,15 @@ def create_hash_manifest(package_root: Path) -> tuple[int, int, str]:
     total_file_bytes = sum(path.stat().st_size for path in paths)
     total_bytes = 0
     last_update = 0.0
+    manifest_digest = hashlib.sha256()
     report_status(0, max(total_file_bytes, 1), f"Hashing backup: 0/{len(paths)} files")
     with manifest_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle, lineterminator="\n")
+        class DigestingWriter:
+            def write(self, value: str) -> int:
+                manifest_digest.update(value.encode("utf-8"))
+                return handle.write(value)
+
+        writer = csv.writer(DigestingWriter(), lineterminator="\n")
         writer.writerow(("relative_path", "size", "sha256"))
         for index, path in enumerate(paths, start=1):
             size = path.stat().st_size
@@ -898,7 +904,9 @@ def create_hash_manifest(package_root: Path) -> tuple[int, int, str]:
                 last_update = now
             if index % 1000 == 0 or index == len(paths):
                 log(f"  ... hashed {index}/{len(paths)} files ({total_bytes / 1073741824:.2f} GiB)")
-    return len(paths), total_bytes, sha256_file(manifest_path)
+    log("Hash manifest finalized; preparing independent verification...")
+    report_status(0, 1, "Preparing independent verification...")
+    return len(paths), total_bytes, manifest_digest.hexdigest()
 
 
 def write_package_manifest(package_root: Path, package: dict[str, Any]) -> None:

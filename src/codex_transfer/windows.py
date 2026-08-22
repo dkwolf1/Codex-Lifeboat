@@ -5,6 +5,8 @@ import json
 import os
 import re
 import subprocess
+import sys
+import tempfile
 import winreg
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,17 @@ IOCTL_STORAGE_QUERY_PROPERTY = 0x002D1400
 FILE_SHARE_READ = 0x00000001
 FILE_SHARE_WRITE = 0x00000002
 OPEN_EXISTING = 3
+
+
+def launched_from_compressed_folder(executable: Path | None = None) -> bool:
+    """Return true for Windows Explorer's temporary run-from-ZIP extraction."""
+    executable = (executable or Path(sys.executable)).resolve(strict=False)
+    temporary_root = Path(tempfile.gettempdir()).resolve(strict=False)
+    try:
+        relative = executable.relative_to(temporary_root)
+    except ValueError:
+        return False
+    return any(".zip." in part.lower() or part.lower().endswith(".zip") for part in relative.parts)
 
 
 def _user_shell_folder(name: str, fallback: Path) -> Path:
