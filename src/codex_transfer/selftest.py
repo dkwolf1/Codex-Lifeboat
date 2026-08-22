@@ -5,12 +5,13 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from . import backup, restore
+from . import backup, restore, windows
 from .validate import validate
 
 
@@ -350,7 +351,16 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         source_codex_home=str(source_codex),
         allow_running_test=True,
     )
-    package = backup.build_backup(args)
+    progress_events: list[tuple[int, int, str]] = []
+    backup.set_status_callback(
+        lambda current, total, message: progress_events.append(
+            (current, total, message)
+        )
+    )
+    try:
+        package = backup.build_backup(args)
+    finally:
+        backup.set_status_callback(None)
     source_after = _hash_tree(source_profile)
     package_validation = validate(package, False)
     snapshot_connection = backup.connect_read_only(
@@ -436,12 +446,43 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         ]
         == "rolled-back"
     )
+    hashing_progress_complete = any(
+        current == total and message.startswith("Hashing backup:")
+        for current, total, message in progress_events
+    )
+    validation_progress_complete = any(
+        current == total and message.startswith("Validating backup:")
+        for current, total, message in progress_events
+    )
+    original_run_hidden = windows.run_hidden
+    try:
+        windows.run_hidden = lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Version: Unknown\n", stderr=""
+        )
+        unknown_version = windows.latest_version_check(
+            {"detected": True, "version": "26.818.5229.0"}
+        )
+    finally:
+        windows.run_hidden = original_run_hidden
+    unknown_version_does_not_warn = (
+        unknown_version.get("checked") is False
+        and unknown_version.get("isLatest") is None
+    )
+    usb_classification = (
+        windows._include_as_usb_destination(windows.DRIVE_REMOVABLE, False)
+        and windows._include_as_usb_destination(windows.DRIVE_FIXED, True)
+        and not windows._include_as_usb_destination(windows.DRIVE_FIXED, False)
+    )
     checks = {
         "packageValid": package_validation["valid"],
         "snapshotUsesSingleFileJournal": snapshot_journal_mode == "delete",
         "validatorIsReadOnly": package_validation.get("checks", {}).get(
             "packageUnchangedDuringValidation", False
         ),
+        "hashingProgressComplete": hashing_progress_complete,
+        "validationProgressComplete": validation_progress_complete,
+        "unknownStoreVersionDoesNotWarn": unknown_version_does_not_warn,
+        "usbDriveClassification": usb_classification,
         "sourceUnchanged": source_before == source_after,
         "sourceAuthExcluded": not source_auth_in_package,
         "portableExecutableIncluded": portable_executable_included,

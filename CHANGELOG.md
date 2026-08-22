@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.3 - 2026-08-23
+
+- Added live file, byte and percentage progress during hashing and validation.
+- Removed a redundant third full payload hash pass while retaining independent
+  full verification before a backup is finalized.
+- Detects USB-backed fixed disks in addition to drives marked removable and
+  refreshes the drive list automatically.
+- Treats an unknown Microsoft Store version as unavailable information instead
+  of incorrectly warning that a newer version may exist.
+
 ## 3.1.2 - 2026-08-22
 
 - Fixed final validation of real Codex snapshots that use SQLite WAL mode.

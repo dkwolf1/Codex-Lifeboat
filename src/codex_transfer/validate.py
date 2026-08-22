@@ -10,9 +10,10 @@ import json
 import os
 import sqlite3
 import sys
+import time
 import urllib.parse
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Callable
 
 
 FORMAT_ID = "codex-portable-backup"
@@ -43,11 +44,13 @@ FORBIDDEN_CODEX_DIRECTORIES = {
 }
 
 
-def sha256_file(path: Path) -> str:
+def sha256_file(path: Path, progress: Callable[[int], None] | None = None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+            if progress:
+                progress(len(chunk))
     return digest.hexdigest()
 
 
@@ -85,7 +88,12 @@ def parse_session_id(path: Path) -> tuple[str | None, str | None]:
         return None, str(exc)
 
 
-def validate(package_root: Path, allow_building: bool) -> dict[str, Any]:
+def validate(
+    package_root: Path,
+    allow_building: bool,
+    progress: Callable[[int, int, str], None] | None = None,
+    verify_hashes: bool = True,
+) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
     checks: dict[str, Any] = {}
@@ -193,7 +201,14 @@ def validate(package_root: Path, allow_building: bool) -> dict[str, Any]:
     for value in sorted(listed_files - actual_files):
         errors.append(f"Hashed file is missing: {value}")
     checked_hashes = 0
-    for relative_path, (expected_size, expected_hash) in hash_rows.items():
+    processed_bytes = 0
+    total_hash_bytes = sum(size for size, _digest in hash_rows.values())
+    last_update = 0.0
+    if progress and verify_hashes:
+        progress(0, max(total_hash_bytes, 1), f"Validating backup: 0/{len(hash_rows)} files")
+    for index, (relative_path, (expected_size, expected_hash)) in enumerate(
+        hash_rows.items(), start=1
+    ):
         path = package_root / Path(*PurePosixPath(relative_path).parts)
         if not path.is_file():
             continue
@@ -203,11 +218,40 @@ def validate(package_root: Path, allow_building: bool) -> dict[str, Any]:
                 f"Grootte wijkt af: {relative_path} ({actual_size} i.p.v. {expected_size})"
             )
             continue
-        actual_hash = sha256_file(path)
-        checked_hashes += 1
-        if actual_hash != expected_hash:
-            errors.append(f"Hash wijkt af: {relative_path}")
+        if verify_hashes:
+            file_bytes = 0
+
+            def chunk_progress(chunk_size: int) -> None:
+                nonlocal file_bytes, last_update
+                file_bytes += chunk_size
+                now = time.monotonic()
+                if progress and now - last_update >= 0.25:
+                    current = processed_bytes + file_bytes
+                    percent = (
+                        current / total_hash_bytes * 100 if total_hash_bytes else 100
+                    )
+                    progress(
+                        current,
+                        max(total_hash_bytes, 1),
+                        f"Validating backup: {percent:.1f}% — {index}/{len(hash_rows)} files — "
+                        f"{current / 1073741824:.2f}/{total_hash_bytes / 1073741824:.2f} GiB",
+                    )
+                    last_update = now
+
+            actual_hash = sha256_file(path, chunk_progress)
+            checked_hashes += 1
+            if actual_hash != expected_hash:
+                errors.append(f"Hash wijkt af: {relative_path}")
+        processed_bytes += expected_size
+        if progress and verify_hashes and index == len(hash_rows):
+            progress(
+                total_hash_bytes,
+                max(total_hash_bytes, 1),
+                f"Validating backup: 100.0% — {index}/{len(hash_rows)} files — "
+                f"{total_hash_bytes / 1073741824:.2f} GiB",
+            )
     checks["hashedFilesChecked"] = checked_hashes
+    checks["payloadHashesVerified"] = verify_hashes
     declared_hashed = package.get("counts", {}).get("hashedFiles") if isinstance(package.get("counts"), dict) else None
     if declared_hashed != len(hash_rows):
         errors.append(

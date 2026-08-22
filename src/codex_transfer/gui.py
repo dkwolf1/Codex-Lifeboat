@@ -90,6 +90,7 @@ class TransferApp(tk.Tk):
         self._build()
         self._translate()
         self.after(100, self._drain_messages)
+        self.after(1000, self._refresh_drives)
 
     def t(self, key: str, **values) -> str:
         return TEXT[self.language.get()][key].format(**values)
@@ -170,6 +171,15 @@ class TransferApp(tk.Tk):
         self.language.set("en" if self.language_box.current() == 0 else "nl")
         self._translate()
 
+    def _refresh_drives(self) -> None:
+        try:
+            drives = windows.removable_drives()
+            self.usb_value.configure(text=", ".join(map(str, drives)) or "—")
+        except Exception:
+            pass
+        finally:
+            self.after(2000, self._refresh_drives)
+
     def _translate(self) -> None:
         self.title(self.t("title"))
         self.title_label.configure(text=self.t("title"))
@@ -197,6 +207,13 @@ class TransferApp(tk.Tk):
                 break
             if kind == "log":
                 self._append_log(str(value))
+            elif kind == "progress":
+                current, total, message = value
+                self.progress.stop()
+                self.progress.configure(
+                    mode="determinate", maximum=max(int(total), 1), value=int(current)
+                )
+                self.status_label.configure(text=str(message))
             elif kind == "done":
                 self._set_busy(False)
                 callback, result = value
@@ -212,9 +229,11 @@ class TransferApp(tk.Tk):
         for button in self.action_buttons:
             button.configure(state="disabled" if value else "normal")
         if value:
+            self.progress.configure(mode="indeterminate", value=0)
             self.progress.start(10)
         else:
             self.progress.stop()
+            self.progress.configure(mode="indeterminate", value=0)
         self._translate()
 
     def _run(self, function, done) -> None:
@@ -235,11 +254,15 @@ class TransferApp(tk.Tk):
     def _log_callback(self, message: str) -> None:
         self.messages.put(("log", message))
 
+    def _status_callback(self, current: int, total: int, message: str) -> None:
+        self.messages.put(("progress", (current, total, message)))
+
     def _version_permission(self) -> bool:
         installed = windows.installed_codex_version()
         latest = windows.latest_version_check(installed)
         self.last_version_check = {"installed": installed, "latest": latest}
-        if latest.get("checked") and latest.get("isLatest") is True:
+        if latest.get("isLatest") is not False:
+            self._append_log(str(latest.get("message") or "Version check unavailable"))
             return True
         return messagebox.askyesno(
             self.t("warning"),
@@ -313,6 +336,7 @@ class TransferApp(tk.Tk):
                 encoding="utf-8",
             )
             backup.set_progress_callback(self._log_callback)
+            backup.set_status_callback(self._status_callback)
             args = argparse.Namespace(
                 config=str(config_path),
                 destination=selected,
@@ -355,7 +379,16 @@ class TransferApp(tk.Tk):
                     parent=self,
                 )
 
-        self._run(lambda: validate(package, False), done)
+        self._run(
+            lambda: validate(
+                package,
+                False,
+                progress=lambda current, total, message: self._status_callback(
+                    current, total, message
+                ),
+            ),
+            done,
+        )
 
     def _restore(self) -> None:
         messagebox.showinfo(self.t("restore"), self.t("restore_intro"), parent=self)

@@ -16,17 +16,19 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
 import uuid
 import urllib.parse
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.0"
-GENERATOR_VERSION = "3.1.2"
+GENERATOR_VERSION = "3.1.3"
 PROGRESS_CALLBACK = None
+STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
 _RUNTIME_DIRECTORY: tempfile.TemporaryDirectory[str] | None = None
 PORTABLE_STATE_KEYS = (
@@ -116,6 +118,19 @@ def set_progress_callback(callback) -> None:
     PROGRESS_CALLBACK = callback
 
 
+def set_status_callback(callback) -> None:
+    global STATUS_CALLBACK
+    STATUS_CALLBACK = callback
+
+
+def report_status(current: int, total: int, message: str) -> None:
+    if STATUS_CALLBACK:
+        try:
+            STATUS_CALLBACK(current, total, message)
+        except Exception:
+            pass
+
+
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -133,11 +148,13 @@ def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
-def sha256_file(path: Path) -> str:
+def sha256_file(path: Path, progress: Callable[[int], None] | None = None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+            if progress:
+                progress(len(chunk))
     return digest.hexdigest()
 
 
@@ -834,16 +851,53 @@ def create_hash_manifest(package_root: Path) -> tuple[int, int, str]:
     ]
     paths.sort(key=lambda path: portable_relative(path, package_root).lower())
     manifest_path = package_root / "manifest" / "sha256.csv"
+    total_file_bytes = sum(path.stat().st_size for path in paths)
     total_bytes = 0
+    last_update = 0.0
+    report_status(0, max(total_file_bytes, 1), f"Hashing backup: 0/{len(paths)} files")
     with manifest_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(("relative_path", "size", "sha256"))
         for index, path in enumerate(paths, start=1):
             size = path.stat().st_size
-            writer.writerow((portable_relative(path, package_root), size, sha256_file(path)))
+            file_bytes = 0
+
+            def chunk_progress(chunk_size: int) -> None:
+                nonlocal file_bytes, last_update
+                file_bytes += chunk_size
+                now = time.monotonic()
+                if now - last_update >= 0.25:
+                    current = total_bytes + file_bytes
+                    percent = (
+                        current / total_file_bytes * 100 if total_file_bytes else 100
+                    )
+                    report_status(
+                        current,
+                        max(total_file_bytes, 1),
+                        f"Hashing backup: {percent:.1f}% — {index}/{len(paths)} files — "
+                        f"{current / 1073741824:.2f}/{total_file_bytes / 1073741824:.2f} GiB",
+                    )
+                    last_update = now
+
+            writer.writerow(
+                (
+                    portable_relative(path, package_root),
+                    size,
+                    sha256_file(path, chunk_progress),
+                )
+            )
             total_bytes += size
-            if index % 1000 == 0:
-                log(f"  ... hashed {index} files")
+            now = time.monotonic()
+            if now - last_update >= 0.25 or index == len(paths):
+                percent = (total_bytes / total_file_bytes * 100) if total_file_bytes else 100
+                message = (
+                    f"Hashing backup: {percent:.1f}% — {index}/{len(paths)} files — "
+                    f"{total_bytes / 1073741824:.2f}/{total_file_bytes / 1073741824:.2f} GiB"
+                )
+                report_status(total_bytes, max(total_file_bytes, 1), message)
+                last_update = now
+            if index % 1000 == 0 or index == len(paths):
+                log(f"  ... hashed {index}/{len(paths)} files ({total_bytes / 1073741824:.2f} GiB)")
     return len(paths), total_bytes, sha256_file(manifest_path)
 
 
@@ -854,7 +908,12 @@ def write_package_manifest(package_root: Path, package: dict[str, Any]) -> None:
     sidecar.write_text(sha256_file(package_path) + "\n", encoding="ascii")
 
 
-def run_validator(package_root: Path, validator: Path, allow_building: bool) -> None:
+def run_validator(
+    package_root: Path,
+    validator: Path,
+    allow_building: bool,
+    verify_hashes: bool = True,
+) -> None:
     try:
         from .validate import validate
     except ImportError:
@@ -863,11 +922,19 @@ def run_validator(package_root: Path, validator: Path, allow_building: bool) -> 
         except ImportError:
             validate = None
     if validate is not None:
-        result = validate(package_root, allow_building)
+        result = validate(
+            package_root,
+            allow_building,
+            progress=lambda current, total, message: report_status(
+                current, total, message
+            ),
+            verify_hashes=verify_hashes,
+        )
         if not result.get("valid"):
             for error in result.get("errors", []):
                 log(f"FOUT: {error}")
             raise BackupError("Independent package validation failed.")
+        log("Independent package validation passed.")
         return
     command = [sys.executable, str(validator), str(package_root)]
     if allow_building:
@@ -1104,7 +1171,11 @@ def build_backup(args: argparse.Namespace) -> Path:
         package["completedAtUtc"] = utc_now()
         write_package_manifest(building, package)
         log("Running final independent validation...")
-        run_validator(building, validator, allow_building=False)
+        # The payload was fully re-read during preflight and is unchanged here;
+        # final validation checks completion metadata, paths and file sizes.
+        run_validator(
+            building, validator, allow_building=False, verify_hashes=False
+        )
         os.replace(building, final_path)
         log("")
         log("PASSED")
