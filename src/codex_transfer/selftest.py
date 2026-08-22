@@ -353,6 +353,15 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     package = backup.build_backup(args)
     source_after = _hash_tree(source_profile)
     package_validation = validate(package, False)
+    snapshot_connection = backup.connect_read_only(
+        package / "codex" / "state.snapshot.sqlite"
+    )
+    try:
+        snapshot_journal_mode = str(
+            snapshot_connection.execute("PRAGMA journal_mode").fetchone()[0]
+        ).lower()
+    finally:
+        snapshot_connection.close()
     source_auth_in_package = any(
         path.name.lower() == "auth.json" for path in package.rglob("*") if path.is_file()
     )
@@ -429,6 +438,10 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     )
     checks = {
         "packageValid": package_validation["valid"],
+        "snapshotUsesSingleFileJournal": snapshot_journal_mode == "delete",
+        "validatorIsReadOnly": package_validation.get("checks", {}).get(
+            "packageUnchangedDuringValidation", False
+        ),
         "sourceUnchanged": source_before == source_after,
         "sourceAuthExcluded": not source_auth_in_package,
         "portableExecutableIncluded": portable_executable_included,

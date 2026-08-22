@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.2 - 2026-08-22
+
+- Fixed final validation of real Codex snapshots that use SQLite WAL mode.
+- Snapshot databases are now normalized to a single self-contained file.
+- The independent validator now opens snapshots as immutable and verifies that
+  validation did not modify the backup package.
+
 ## 3.1.1 - 2026-08-22
 
 - Fixed backup failure with `WinError 3` when the portable application was

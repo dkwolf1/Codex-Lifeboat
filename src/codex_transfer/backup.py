@@ -25,7 +25,7 @@ from typing import Any, Iterable
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.0"
-GENERATOR_VERSION = "3.1.1"
+GENERATOR_VERSION = "3.1.2"
 PROGRESS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
 _RUNTIME_DIRECTORY: tempfile.TemporaryDirectory[str] | None = None
@@ -210,6 +210,9 @@ def create_snapshot(source: Path, destination: Path) -> dict[str, Any]:
     target_connection = sqlite3.connect(destination)
     try:
         source_connection.backup(target_connection)
+        journal_mode = target_connection.execute("PRAGMA journal_mode=DELETE").fetchone()
+        if not journal_mode or str(journal_mode[0]).lower() != "delete":
+            raise BackupError("Could not normalize the snapshot database journal mode.")
     finally:
         target_connection.close()
         source_connection.close()

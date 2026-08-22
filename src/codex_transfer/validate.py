@@ -227,7 +227,12 @@ def validate(package_root: Path, allow_building: bool) -> dict[str, Any]:
     database_threads: set[str] = set()
     try:
         uri_path = urllib.parse.quote(database_path.as_posix(), safe="/:")
-        connection = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True)
+        # A plain read-only connection to a WAL-mode database can still create
+        # sibling -wal/-shm files. A validator must never mutate the package it
+        # is checking, so treat the completed snapshot as immutable.
+        connection = sqlite3.connect(
+            f"file:{uri_path}?mode=ro&immutable=1", uri=True
+        )
         try:
             quick_check_row = connection.execute("PRAGMA quick_check").fetchone()
             quick_check = str(quick_check_row[0]) if quick_check_row else "no result"
@@ -372,6 +377,19 @@ def validate(package_root: Path, allow_building: bool) -> dict[str, Any]:
         checks["attachmentsCopiedChecked"] = len(copied_attachments)
     except Exception as exc:
         errors.append(f"path-mappings.json is invalid: {exc}")
+
+    actual_files_after = {
+        rel(path, package_root)
+        for path in package_root.rglob("*")
+        if path.is_file() and rel(path, package_root) not in MANIFEST_EXCLUSIONS
+    }
+    package_unchanged = actual_files_after == actual_files
+    checks["packageUnchangedDuringValidation"] = package_unchanged
+    if not package_unchanged:
+        for value in sorted(actual_files_after - actual_files):
+            errors.append(f"Validator created an unexpected file: {value}")
+        for value in sorted(actual_files - actual_files_after):
+            errors.append(f"File disappeared during validation: {value}")
 
     return {
         "valid": not errors,

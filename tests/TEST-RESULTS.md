@@ -1,4 +1,4 @@
-# Test results 3.1.1
+# Test results 3.1.2
 
 Date: August 22, 2026
 Platform: Windows 11 build environment; target compatibility Windows 10/11 x64
@@ -14,6 +14,8 @@ The executable test did not use an external Python runtime.
 | Source files identical before and after backup | Passed |
 | Source `auth.json` excluded | Passed |
 | Stable restore executable included in portable backup | Passed |
+| SQLite snapshot normalized to a single-file journal | Passed |
+| Independent validation does not modify the package | Passed |
 | Exact `.git`, `.env` and uncommitted project files | Passed |
 | Skills and portable Codex configuration restored | Passed |
 | Different source and destination usernames translated | Passed |
