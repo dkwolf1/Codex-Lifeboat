@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Codex Lifeboat version
-      placeholder: "3.4.0"
+      placeholder: "3.4.1"
     validations:
       required: true
   - type: dropdown

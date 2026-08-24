@@ -3,20 +3,20 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Public test: 3.4.0](https://img.shields.io/badge/public%20test-v3.4.0-f59e0b)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.0)
+[![Public test: 3.4.1](https://img.shields.io/badge/public%20test-v3.4.1-f59e0b)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.1)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Public testing release:** version 3.4.0 is a beta release candidate. Its
+> **Public testing release:** version 3.4.1 is a beta release candidate. Its
 > automated source, executable, and extracted-ZIP tests pass, but real
 > Windows 10 and multi-computer round trips are still being collected. Keep an
 > independent copy of irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.0 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.0)
+### [Download Codex Lifeboat 3.4.1 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.1)
 
 On the release page, download only:
 

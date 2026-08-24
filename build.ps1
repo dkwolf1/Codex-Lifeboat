@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '3.4.0',
+    [string]$Version = '3.4.1',
     [string]$PythonPath,
     [switch]$SkipTests
 )

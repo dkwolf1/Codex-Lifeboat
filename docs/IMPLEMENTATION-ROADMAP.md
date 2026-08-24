@@ -229,7 +229,7 @@ known limitations, and a structured community compatibility-report form.
 
 ### Phase 13.1 — Diagnostics center and anonymized report
 
-**Status:** Implemented in 3.4.0 source
+**Status:** Implemented in 3.4.1
 
 - Add one read-only GUI action for system diagnostics.
 - Check Windows 10/11 compatibility, extracted launch location, Codex folder and
@@ -246,7 +246,7 @@ inspected profile, and known synthetic identity values do not occur in the repor
 
 ### Phase 13.2 — Schema-aware path portability audit
 
-**Status:** Implemented in 3.4.0 source
+**Status:** Implemented in 3.4.1
 
 - Inspect path-bearing SQLite and global-state fields without changing the source.
 - Distinguish known translated paths, intentionally excluded machine-specific state,
@@ -264,7 +264,7 @@ the package, and the complete source suite passes.
 
 ### Phase 13.3 — Git-aware conflict explanation
 
-**Status:** Implemented in 3.4.0 source
+**Status:** Implemented in 3.4.1
 
 - Inspect both project worktrees without locks or writes when Git is available.
 - Distinguish the same commit, backup-ahead, computer-ahead, divergent, unrelated,
@@ -279,7 +279,7 @@ changes; no path is exposed and Git evidence never changes a restore action.
 
 ### Phase 13.4 — Durable atomic metadata storage
 
-**Status:** Implemented in 3.4.0 source
+**Status:** Implemented in 3.4.1
 
 - Route critical JSON and checksum metadata through one same-directory writer.
 - Flush the complete temporary file, read it back, parse and optionally validate it,
@@ -293,7 +293,7 @@ successful retry installs the complete new value, and no temporary metadata rema
 
 ### Phase 13.5 — Strict prefix-only conversation synchronization
 
-**Status:** Implemented in 3.4.0
+**Status:** Implemented in 3.4.1
 
 - Compare source and destination rollout JSONL as normalized semantic records,
   streaming in order and without modifying either file.

@@ -4,14 +4,14 @@
 
 [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Openbare testrelease:** versie 3.4.0 is een bèta/release candidate. De
+> **Openbare testrelease:** versie 3.4.1 is een bèta/release candidate. De
 > geautomatiseerde bron-, EXE- en ZIP-tests slagen, maar praktijkresultaten van
 > Windows 10 en echte overdrachten tussen meerdere computers worden nog verzameld.
 > Bewaar onvervangbare gegevens ook apart en lees de [testhandleiding](TESTHANDLEIDING.md).
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.0](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.0)
+### [Download Codex Lifeboat 3.4.1](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.1)
 
 Download op de releasepagina uitsluitend dit bestand:
 

@@ -1,8 +1,8 @@
-# Public testing guide for Codex Lifeboat 3.4.0
+# Public testing guide for Codex Lifeboat 3.4.1
 
 [Nederlandse vertaling](nl/TESTHANDLEIDING.md)
 
-Version 3.4.0 is a public beta/release candidate. Automated tests cover simulated
+Version 3.4.1 is a public beta/release candidate. Automated tests cover simulated
 Windows users, paths, conflicts, failures, rollback, package corruption, and
 round trips. Community testing is intended to add real Windows 10/11, USB, and
 multi-computer evidence.

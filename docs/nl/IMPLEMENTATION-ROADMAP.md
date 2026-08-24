@@ -224,7 +224,7 @@ bekende grenzen en een vast formulier voor compatibiliteitsresultaten.
 
 ### Fase 13.1 — Diagnosecentrum en geanonimiseerd rapport
 
-**Status:** Geïmplementeerd in de broncode van 3.4.0
+**Status:** Geïmplementeerd in 3.4.1
 
 - Eén alleen-lezen GUI-actie voor systeemdiagnose toevoegen.
 - Windows 10/11, uitgepakte startlocatie, Codex-map en SQLite-integriteit,
@@ -241,7 +241,7 @@ profiel niet en bekende synthetische identiteitswaarden komen niet in het rappor
 
 ### Fase 13.2 — Schemabewuste audit van overdraagbare paden
 
-**Status:** Geïmplementeerd in de broncode van 3.4.0
+**Status:** Geïmplementeerd in 3.4.1
 
 - Padbevattende SQLite- en global-state-velden onderzoeken zonder de bron te wijzigen.
 - Bekende vertaalde paden, bewust uitgesloten computerspecifieke status, bekende
@@ -259,7 +259,7 @@ audit wordt in het pakket met hashes gecontroleerd en de volledige broncode-test
 
 ### Fase 13.3 — Git-bewuste conflictuitleg
 
-**Status:** Geïmplementeerd in de broncode van 3.4.0
+**Status:** Geïmplementeerd in 3.4.1
 
 - Beide projectwerkmappen zonder locks of wijzigingen onderzoeken wanneer Git beschikbaar is.
 - Dezelfde commit, back-up loopt voor, computer loopt voor, uiteengelopen of niet-
@@ -274,7 +274,7 @@ wijzigingen; er lekt geen pad en Git-bewijs verandert nooit een herstelactie.
 
 ### Fase 13.4 — Duurzame atomische metadataopslag
 
-**Status:** Geïmplementeerd in de broncode van 3.4.0
+**Status:** Geïmplementeerd in 3.4.1
 
 - Kritieke JSON- en checksummetadata via één schrijver in dezelfde map opslaan.
 - Het tijdelijke bestand volledig flushen, teruglezen, parseren en eventueel
@@ -288,7 +288,7 @@ waarde, een nieuwe poging plaatst de volledige nieuwe waarde en laat geen tempbe
 
 ### Fase 13.5 — Strikte prefix-synchronisatie van chats
 
-**Status:** Geïmplementeerd in 3.4.0
+**Status:** Geïmplementeerd in 3.4.1
 
 - Bron- en doelrollout als genormaliseerde semantische JSONL-records in volgorde
   vergelijken, zonder een van beide bestanden te wijzigen.

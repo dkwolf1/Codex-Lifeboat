@@ -2,18 +2,18 @@
 
 [Nederlands](nl/RELEASE-CHECKLIST.md)
 
-This checklist publishes Codex Lifeboat 3.4.0 as a **pre-release for public
+This checklist publishes Codex Lifeboat 3.4.1 as a **pre-release for public
 testing**. The tag workflow builds and validates fresh release assets, creates
 their checksums and provenance attestations, and publishes the GitHub release.
 
 ## Before pushing
 
-- Confirm that `git status --short` contains only intended 3.4.0 changes.
+- Confirm that `git status --short` contains only intended 3.4.1 changes.
 - Confirm that no real backup, database, token, `.env`, EXE, ZIP, or build
   directory is staged.
 - Keep the generated `dist` directory locally; `.gitignore` deliberately prevents
   it from entering the repository.
-- Do not create the `v3.4.0` tag until the `main` CI run is green.
+- Do not create the `v3.4.1` tag until the `main` CI run is green.
 
 ## Publish with PowerShell
 
@@ -23,7 +23,7 @@ Run these commands from the repository directory:
 git add -A
 git status --short
 git diff --cached --check
-git commit -m "Prepare Codex Lifeboat 3.4.0 public testing release"
+git commit -m "Prepare Codex Lifeboat 3.4.1 public testing release"
 git push origin main
 ```
 
@@ -31,15 +31,15 @@ Wait until the `main` CI run is green at
 <https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml>. Then run:
 
 ```powershell
-git tag -a v3.4.0 -m "Codex Lifeboat 3.4.0 public testing release"
-git push origin v3.4.0
+git tag -a v3.4.1 -m "Codex Lifeboat 3.4.1 public testing release"
+git push origin v3.4.1
 ```
 
 The tag triggers `.github/workflows/release.yml`. Do **not** also create a manual
 release with the same tag: the workflow creates it and marks it as a pre-release.
 Follow it at
 <https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/release.yml>, then
-open <https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.0>.
+open <https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.1>.
 
 ## Verify the published release
 
@@ -64,7 +64,7 @@ gh attestation verify .\Codex-Lifeboat-Windows-x64-Portable.zip --repo dkwolf1/C
 
 ## Stable-release gate
 
-Do not relabel 3.4.0 as stable solely because automated checks pass. Collect and
+Do not relabel 3.4.1 as stable solely because automated checks pass. Collect and
 record the remaining physical Windows 10 and two-computer round-trip evidence in
 the Phase 11 matrix first. Public testers should use the compatibility-result
 issue form and must never upload real backups or unsanitized logs.

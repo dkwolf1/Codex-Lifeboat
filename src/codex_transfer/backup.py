@@ -28,7 +28,7 @@ from . import atomic_io, lineage, path_model, project_identity, windows
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.0"
+GENERATOR_VERSION = "3.4.1"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None

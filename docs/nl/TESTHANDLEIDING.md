@@ -1,8 +1,8 @@
-# Openbare testhandleiding voor Codex Lifeboat 3.4.0
+# Openbare testhandleiding voor Codex Lifeboat 3.4.1
 
 [English](../TESTING-GUIDE.md)
 
-Versie 3.4.0 is een openbare bèta/release candidate. Automatische tests simuleren
+Versie 3.4.1 is een openbare bèta/release candidate. Automatische tests simuleren
 Windows-gebruikers, paden, conflicten, fouten, rollback, beschadigde pakketten en
 heen-en-weer-routes. Gebruikerstests moeten aanvullend bewijs leveren met echte
 Windows 10/11-computers, USB-sticks en meerdere computers.

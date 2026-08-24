@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.4.0 - 2026-08-24
+## 3.4.1 - 2026-08-24
 
 - Made normal backup creation substantially faster by avoiding an immediate
   second read of every copied payload byte. Creation still writes SHA-256 for
@@ -52,6 +52,9 @@
   conversation content, authentication data, and environment values.
 - Added regression coverage proving diagnostics leave the inspected source tree
   unchanged and do not expose the synthetic profile identity.
+
+## 3.4.0 - 2026-08-24
+
 - Prepared phase 12 as a clearly marked public testing release rather than a
   stable claim while physical Windows 10 and multi-computer evidence is pending.
 - Added English-first and Dutch testing guides, release notes, release checklists,

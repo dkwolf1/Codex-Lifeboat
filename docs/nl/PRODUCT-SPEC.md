@@ -12,7 +12,7 @@
 - Engels als hoofdtaal met volledige Nederlandse vertaling.
 - Gebruik zonder administratorrechten, Python of installatieprogramma.
 
-Versie 3.4.0 is een openbare bèta/release candidate totdat de resterende fysieke
+Versie 3.4.1 is een openbare bèta/release candidate totdat de resterende fysieke
 fase-11-tests zijn afgerond.
 
 ## Gebruikersbelofte
