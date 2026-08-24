@@ -61,6 +61,82 @@ def desktop_folder(profile: Path | None = None) -> Path:
     return profile / "Desktop"
 
 
+def downloads_folder(profile: Path | None = None) -> Path:
+    profile = (profile or Path.home()).resolve(strict=False)
+    if profile == Path.home().resolve(strict=False):
+        return _user_shell_folder(
+            "{374DE290-123F-4565-9164-39C4925E467B}", profile / "Downloads"
+        )
+    return profile / "Downloads"
+
+
+def known_folders(profile: Path | None = None) -> dict[str, str]:
+    """Return user-independent Windows locations used by portable manifests.
+
+    Registry-backed paths are used for the current user so redirected and
+    OneDrive folders are represented correctly. Synthetic profiles used by
+    tests and offline restore planning receive conventional fallback paths.
+    """
+
+    profile = (profile or Path.home()).resolve(strict=False)
+    current = profile == Path.home().resolve(strict=False)
+    registry_names = {
+        "documents": "Personal",
+        "desktop": "Desktop",
+        "downloads": "{374DE290-123F-4565-9164-39C4925E467B}",
+        "pictures": "My Pictures",
+        "music": "My Music",
+        "videos": "My Video",
+    }
+    fallback_names = {
+        "documents": "Documents",
+        "desktop": "Desktop",
+        "downloads": "Downloads",
+        "pictures": "Pictures",
+        "music": "Music",
+        "videos": "Videos",
+    }
+    result: dict[str, str] = {}
+    for key, fallback_name in fallback_names.items():
+        fallback = profile / fallback_name
+        value = _user_shell_folder(registry_names[key], fallback) if current else fallback
+        result[key] = str(value.resolve(strict=False))
+    return result
+
+
+def lifeboat_data_folder(profile: Path | None = None) -> Path:
+    """Return machine-local Lifeboat state without writing inside projects."""
+
+    profile = (profile or Path.home()).resolve(strict=False)
+    if profile == Path.home().resolve(strict=False):
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            return Path(local_app_data).resolve(strict=False) / "Codex Lifeboat"
+    return profile / "AppData" / "Local" / "Codex Lifeboat"
+
+
+def project_registry_path(profile: Path | None = None) -> Path:
+    return lifeboat_data_folder(profile) / "project-registry.json"
+
+
+def lineage_state_path(profile: Path | None = None) -> Path:
+    return lifeboat_data_folder(profile) / "lineage-state.json"
+
+
+def device_state_path(profile: Path | None = None) -> Path:
+    return lifeboat_data_folder(profile) / "device.json"
+
+
+def location_mapping_registry_path(profile: Path | None = None) -> Path:
+    return lifeboat_data_folder(profile) / "location-mappings.json"
+
+
+def recovery_points_folder(profile: Path | None = None) -> Path:
+    """Return the single managed home for local restore recovery points."""
+
+    return lifeboat_data_folder(profile) / "recovery-points"
+
+
 def _is_usb_backed_drive(letter: str) -> bool:
     """Detect USB disks that Windows reports as fixed, such as external SSDs."""
     kernel32 = ctypes.windll.kernel32

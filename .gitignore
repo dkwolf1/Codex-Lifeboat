@@ -4,8 +4,8 @@ __pycache__/
 .build/
 build/
 dist/
-release/
-releases/
+/release/
+/releases/
 artifacts/
 *.exe
 *.zip

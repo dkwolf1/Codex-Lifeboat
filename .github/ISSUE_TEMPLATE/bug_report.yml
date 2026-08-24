@@ -9,8 +9,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Assistant version
-      placeholder: "3.0.0"
+      label: Codex Lifeboat version
+      placeholder: "3.4.0"
     validations:
       required: true
   - type: dropdown

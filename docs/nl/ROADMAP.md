@@ -1,5 +1,12 @@
 # Roadmap: betrouwbare Codex-back-up en herstel
 
+> Dit is de oorspronkelijke architectuurroadmap. Gebruik voor de actuele status
+> de [implementatieroadmap voor fasen 0–12](IMPLEMENTATION-ROADMAP.md).
+
+[Specificatie voor universeel heen-en-weer herstellen](ROUND-TRIP-RESTORE-SPEC.md)
+
+[Implementatieroadmap: fases 0–12](IMPLEMENTATION-ROADMAP.md)
+
 ## 1. Doel
 
 Een vaste, herhaalbare werkwijze bouwen waarmee een volledige Codex-werkomgeving veilig van computer A naar computer B kan worden overgezet, zonder de aanmelding, installatie-identiteit of machinegebonden instellingen van computer B te beschadigen.

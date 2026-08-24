@@ -1,0 +1,72 @@
+name: Compatibility test result
+description: Report a successful or failed Windows backup and restore test
+title: "[Compatibility]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing. Do not attach a real backup, auth.json, .env, SQLite database, recovery point, API key, conversation content, or private project data.
+  - type: input
+    id: version
+    attributes:
+      label: Codex Lifeboat version
+      placeholder: "3.4.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: overall
+    attributes:
+      label: Overall result
+      options:
+        - Successful round trip
+        - Backup and verification only
+        - Restore and verification only
+        - Failed or blocked
+    validations:
+      required: true
+  - type: dropdown
+    id: source_windows
+    attributes:
+      label: Source Windows version
+      options: ["Windows 10", "Windows 11"]
+    validations:
+      required: true
+  - type: dropdown
+    id: target_windows
+    attributes:
+      label: Target Windows version
+      options: ["Windows 10", "Windows 11", "Same computer"]
+    validations:
+      required: true
+  - type: checkboxes
+    id: differences
+    attributes:
+      label: Environment differences
+      options:
+        - label: Different Windows usernames
+        - label: OneDrive or redirected known folders
+        - label: Different drive letters
+        - label: External, USB, or network project roots
+        - label: Existing chats or projects on the destination
+  - type: checkboxes
+    id: operations
+    attributes:
+      label: Successful operations
+      options:
+        - label: Create backup
+        - label: Verify backup
+        - label: Restore backup
+        - label: Verify restore
+        - label: Return backup from B to A
+  - type: textarea
+    id: result
+    attributes:
+      label: Result and verification
+      description: Describe what was checked in Codex after restore and whether duplicates, missing files, warnings, or conflicts appeared.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include exact errors or warning counts only after removing usernames, project names, chat content, secrets, and private paths.

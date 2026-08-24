@@ -1,6 +1,13 @@
 # Roadmap: reliable Codex backup and restore
 
+> This is the original architecture roadmap. For current delivery status, use the
+> [implementation roadmap for phases 0–12](IMPLEMENTATION-ROADMAP.md).
+
 [Dutch translation](nl/ROADMAP.md)
+
+[Universal round-trip restore specification](ROUND-TRIP-RESTORE-SPEC.md)
+
+[Implementation roadmap: phases 0–12](IMPLEMENTATION-ROADMAP.md)
 
 ## 1. Goal
 

@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: write
+  attestations: write
+  id-token: write
 
 jobs:
   release:
@@ -13,9 +15,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
           cache: pip
@@ -24,14 +28,27 @@ jobs:
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           .\build.ps1 -Version $version -PythonPath (Get-Command python).Source
+      - name: Attest release build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: |
+            ./dist/Codex-Lifeboat.exe
+            ./dist/Codex-Lifeboat-Windows-x64-Portable.zip
+            ./dist/SHA256.txt
       - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $notes = ".\docs\releases\$env:GITHUB_REF_NAME.md"
+          if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
+            throw "Release notes are missing: $notes"
+          }
           gh release create $env:GITHUB_REF_NAME `
+            .\dist\Codex-Lifeboat.exe `
             .\dist\Codex-Lifeboat-Windows-x64-Portable.zip `
             .\dist\SHA256.txt `
             --verify-tag `
-            --generate-notes `
+            --notes-file $notes `
+            --prerelease `
             --title "Codex Lifeboat $env:GITHUB_REF_NAME"

@@ -1,6 +1,6 @@
 [project]
 name = "codex-lifeboat"
-version = "3.1.4"
+version = "3.4.0"
 description = "One-click Codex backup, restore and Windows PC migration utility"
 readme = "README.md"
 license = "MIT"
