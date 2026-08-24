@@ -202,7 +202,7 @@ Windows-CI-profielen is actief. Praktijktests op echte Windows 10/11-computers,
 USB-verwijdering tijdens schrijven en de release-candidate heen-en-weer-route
 staan nog open.
 De broncode, verpakte EXE en opnieuw uitgepakte portable ZIP slagen lokaal op
-Windows 11 voor alle 66 controles en 12/12 geautomatiseerde scenario's.
+Windows 11 voor alle 75 controles en 12/12 geautomatiseerde scenario's.
 
 ## Fase 12 — Publieke release en bewijs voor stabiele release
 
@@ -219,3 +219,89 @@ Windows 11 voor alle 66 controles en 12/12 geautomatiseerde scenario's.
 Versie 3.4.0 verschijnt daarom als transparante pre-release met Engelse
 hoofddocumentatie, Nederlandse vertaling, SHA-256-bestanden, beveiligingsmelding,
 bekende grenzen en een vast formulier voor compatibiliteitsresultaten.
+
+## Fase 13 — Vervolg voor betrouwbaarheid en overdraagbaarheid
+
+### Fase 13.1 — Diagnosecentrum en geanonimiseerd rapport
+
+**Status:** Geïmplementeerd in de broncode van 3.4.0
+
+- Eén alleen-lezen GUI-actie voor systeemdiagnose toevoegen.
+- Windows 10/11, uitgepakte startlocatie, Codex-map en SQLite-integriteit,
+  Codex-processtatus, geïnstalleerde versie, verwisselbare opslag, lokale vrije
+  ruimte, herstelpunten en lokale Lifeboat-status controleren.
+- Geslaagd-, let-op- en foutresultaten in Engels en Nederlands tonen.
+- Een gestructureerd JSON-supportrapport kopiëren of opslaan.
+- Gebruikers- en computernamen, stationsletters, absolute paden, project- en
+  bestandsnamen, chattitels/-inhoud, aanmeldgegevens en omgevingswaarden uitsluiten.
+- Zowel onveranderde brongegevens als anonimisering automatisch blijven testen.
+
+**Poort:** De volledige zelftest slaagt, de diagnose verandert het gecontroleerde
+profiel niet en bekende synthetische identiteitswaarden komen niet in het rapport voor.
+
+### Fase 13.2 — Schemabewuste audit van overdraagbare paden
+
+**Status:** Geïmplementeerd in de broncode van 3.4.0
+
+- Padbevattende SQLite- en global-state-velden onderzoeken zonder de bron te wijzigen.
+- Bekende vertaalde paden, bewust uitgesloten computerspecifieke status, bekende
+  velden met niet-gekoppelde externe paden en onbekende toekomstige velden onderscheiden.
+- Het resultaat vóór de back-up en in het diagnosecentrum tonen.
+- In iedere back-up een afzonderlijk gehasht `reports/portability-audit.json` opslaan.
+- Alleen aantallen, classificaties, redencodes en stabiele vingerafdrukken vastleggen;
+  nooit paden, projectnamen, gebruikersidentiteit of chatinhoud.
+- Bij benodigde controle waarschuwen en doorgaan; nooit een vertaling gokken of een
+  onbekend veld stil verwijderen.
+
+**Poort:** Geslaagd. Synthetische bekende en toekomstige velden worden correct
+geclassificeerd, de scan is alleen-lezen, rapporten bevatten geen echte paden, de
+audit wordt in het pakket met hashes gecontroleerd en de volledige broncode-test slaagt.
+
+### Fase 13.3 — Git-bewuste conflictuitleg
+
+**Status:** Geïmplementeerd in de broncode van 3.4.0
+
+- Beide projectwerkmappen zonder locks of wijzigingen onderzoeken wanneer Git beschikbaar is.
+- Dezelfde commit, back-up loopt voor, computer loopt voor, uiteengelopen of niet-
+  verwante geschiedenis, lokale wijzigingen en onvoldoende bewijs onderscheiden.
+- De uitleg tonen zodra in het herstelplan een project wordt geselecteerd.
+- De volledige Lifeboat-bestandshashes leidend houden en alle bestaande expliciete
+  conflictkeuzes behouden.
+- Nooit mergen, committen, resetten, rebasen, fetchen, pushen of een werkmap wijzigen.
+
+**Poort:** Geslaagd. Synthetische geschiedenis test voortgang, divergentie en lokale
+wijzigingen; er lekt geen pad en Git-bewijs verandert nooit een herstelactie.
+
+### Fase 13.4 — Duurzame atomische metadataopslag
+
+**Status:** Geïmplementeerd in de broncode van 3.4.0
+
+- Kritieke JSON- en checksummetadata via één schrijver in dezelfde map opslaan.
+- Het tijdelijke bestand volledig flushen, teruglezen, parseren en eventueel
+  valideren, daarna atomisch vervangen en tijdelijke resten bij fouten verwijderen.
+- Configuratie, manifesten, rapporten, hersteljournalen, projectidentiteiten,
+  back-uplijn/apparaatstatus, externe-rootkoppelingen en checksums afdekken.
+- Bij onderbreking vóór vervanging de vorige volledige waarde behouden.
+
+**Poort:** Geslaagd. Een geïnjecteerde vervangingsfout behoudt de oude leesbare
+waarde, een nieuwe poging plaatst de volledige nieuwe waarde en laat geen tempbestand achter.
+
+### Fase 13.5 — Strikte prefix-synchronisatie van chats
+
+**Status:** Geïmplementeerd in 3.4.0
+
+- Bron- en doelrollout als genormaliseerde semantische JSONL-records in volgorde
+  vergelijken, zonder een van beide bestanden te wijzigen.
+- Alleen automatisch doorgaan wanneer een niet-lege doelchat exact de prefix van
+  een langere back-upchat is en alle relevante databasemetadata ongewijzigd zijn.
+- De bestaande transactionele herstelroute gebruiken om de volledige bewezen
+  voortzetting te plaatsen; nooit direct aan een actieve rollout toevoegen.
+- Gewijzigde records of metadata, ongeldige data, lege doelen, langere doelchats en
+  andere afwijkingen als expliciete conflicten laten staan.
+- De veilige uitbreiding en recordaantallen in Engels en Nederlands tonen.
+
+**Poort:** Geslaagd. Semantische paden met andere gebruikersnamen, divergentie,
+metadatawijzigingen, ongeldige JSONL, alleen-lezen planning, transactioneel herstel
+en herhaald idempotent herstel vallen onder de volledige 75 bron- en pakketcontroles.
+
+Fase 13.6 (optionele back-upversleuteling) blijft afzonderlijk vervolgwerk.

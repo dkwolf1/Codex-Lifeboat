@@ -5,10 +5,10 @@ Platform: Windows 11 build environment; target compatibility Windows 10/11 x64
 
 ## Automated end-to-end test
 
-The complete 66-check phase-0-through-11 source suite was executed successfully.
-The latest 3.4.0 standalone executable and the executable started from a freshly
-extracted portable ZIP both passed the same 66-check packaged gate and the 12/12
-automated Phase 11 matrix.
+The complete 75-check phase-0-through-13.5 source suite was executed successfully.
+The 3.4.0 standalone executable and the executable started from a freshly extracted
+portable ZIP both passed the same 75-check packaged gate and the 12/12 automated
+Phase 11 matrix.
 
 | Check | Result |
 |---|---|
@@ -20,8 +20,19 @@ automated Phase 11 matrix.
 | Independent validation does not modify the package | Passed |
 | Hash and validation progress reaches 100% | Passed |
 | Non-measurable finalization and preflight work switches to active indeterminate progress | Passed |
+| Create backup hashes payload once; full independent reread remains in Verify backup | Passed |
+| Project selection shows at least 20 rows and does not use a hidden modal grab | Passed |
 | Unknown Store version does not block backup | Passed |
 | Direct execution from ZIP preview is detected and blocked | Passed |
+| Diagnostics remain read-only and the support report excludes profile identity | Passed |
+| Known, excluded, external, and future path-bearing fields classified read-only | Passed |
+| Every backup contains a path-free, independently hashed portability audit | Passed |
+| Git evidence explains matching, forward, diverged, and dirty project states | Passed |
+| Git insight remains read-only and never changes a restore decision | Passed |
+| Interrupted metadata replacement preserves the old complete value and leaves no temporary file | Passed |
+| Cross-username semantic chat records prove an exact, non-empty destination prefix | Passed |
+| Edited records, changed metadata, and malformed JSONL reject automatic continuation | Passed |
+| Proven prefix-only chat continuation restores transactionally and is idempotent | Passed |
 | Portable path model translates different usernames and redirected known folders | Passed |
 | Long and Unicode portable paths retain their meaning across usernames | Passed |
 | Insufficient destination space is rejected before payload copying | Passed |
@@ -44,7 +55,7 @@ automated Phase 11 matrix.
 | B-to-A-to-B return backup retains one continuous lineage | Passed |
 | New, changed, removed, unchanged and independently changed classification | Passed |
 | Three-way divergent sibling detection | Passed |
-| Multi-megabyte conversation lineage digest streams with byte progress | Passed |
+| Multi-megabyte conversation lineage digest streams with byte progress and 700 grouped attachment paths | Passed |
 | Genuine empty Codex and project trees pass independent validation | Passed |
 | Missing empty lineage tree is rejected as package damage | Passed |
 | Empty portable Codex directories survive restore | Passed |

@@ -11,7 +11,15 @@ import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
-from . import backup, lineage, location_mapper, project_identity, windows
+from . import (
+    backup,
+    conversation_prefix,
+    git_insight,
+    lineage,
+    location_mapper,
+    project_identity,
+    windows,
+)
 
 
 PLAN_VERSION = 2
@@ -364,18 +372,18 @@ def _target_conversations(
         rollout = Path(rollout_value) if rollout_value else None
         fingerprint = None
         size = 0
+        metadata = {
+            "title": value.get("title"),
+            "archived": bool(value.get("archived")),
+            "pinned": bool(value.get("is_pinned")),
+            "projectless": not bool(value.get("project_id")),
+            "projectId": value.get("project_id"),
+            "historyMode": value.get("history_mode"),
+            "memoryMode": value.get("memory_mode"),
+        }
         if rollout and rollout.is_file():
             size = rollout.stat().st_size
             digest = lineage.semantic_file_digest(rollout, replacements)
-            metadata = {
-                "title": value.get("title"),
-                "archived": bool(value.get("archived")),
-                "pinned": bool(value.get("is_pinned")),
-                "projectless": not bool(value.get("project_id")),
-                "projectId": value.get("project_id"),
-                "historyMode": value.get("history_mode"),
-                "memoryMode": value.get("memory_mode"),
-            }
             fingerprint = lineage.aggregate_fingerprint(
                 [{"relative_path": rollout.name, "size": 0, "sha256": digest}],
                 metadata,
@@ -386,6 +394,7 @@ def _target_conversations(
             "size": size,
             "title": value.get("title") or thread_id,
             "archived": bool(value.get("archived")),
+            "metadata": metadata,
         }
     return result
 
@@ -726,6 +735,10 @@ def build_restore_plan(
         )
         source_bytes = int(project.get("totalBytes", 0))
         identity = identity_roots.get(item_id, {})
+        source_project = package_root / Path(
+            *PurePosixPath(str(project.get("backupRelativePath") or "")).parts
+        )
+        git_evidence = git_insight.compare_repositories(source_project, target)
         items.append(
             {
                 "key": key,
@@ -751,10 +764,12 @@ def build_restore_plan(
                 "fingerprintMetadata": metadata,
                 "projectIdentityId": project.get("projectIdentityId"),
                 "codexProjectIds": list(identity.get("codexProjectIds", [])),
+                "gitInsight": git_evidence,
             }
         )
 
     replacements = _target_replacements(target_profile, targets, mappings)
+    source_replacements = lineage.portable_replacements(package, mappings)
     target_threads = _target_conversations(target_profile, replacements)
     source_thread_ids: set[str] = set()
     for key, source in source_items.items():
@@ -771,6 +786,27 @@ def build_restore_plan(
             base_fp,
             str(source.get("state")),
         )
+        prefix_sync = None
+        if blocking and target and source.get("payloadRelativePath"):
+            source_rollout = package_root / Path(
+                *PurePosixPath(str(source["payloadRelativePath"])).parts
+            )
+            target_rollout = Path(str(target.get("path") or ""))
+            prefix_sync = conversation_prefix.compare(
+                source_rollout,
+                target_rollout,
+                source_replacements,
+                replacements,
+                source.get("metadata"),
+                target.get("metadata"),
+            )
+            if prefix_sync.get("automatic"):
+                missing = int(prefix_sync.get("additionalSourceRecords", 0))
+                state, action, blocking = "incoming", "replace", False
+                reason = (
+                    "The conversation on this computer is an exact, unchanged "
+                    f"prefix of the backup; {missing} appended record(s) are incoming."
+                )
         source_bytes = _payload_size(
             hash_rows, source.get("payloadRelativePath"), str(source.get("payloadKind"))
         )
@@ -794,6 +830,7 @@ def build_restore_plan(
                 "availableDecisions": list(CONVERSATION_DECISIONS) if blocking else [],
                 "targetFingerprint": target.get("fingerprint") if target else None,
                 "targetArchived": bool(target.get("archived")) if target else False,
+                "prefixSync": prefix_sync,
             }
         )
     for thread_id in sorted(set(target_threads) - source_thread_ids, key=str.casefold):

@@ -60,6 +60,20 @@ It includes:
   file count, size, and largest folders before anything is copied
 - Optional whole-project exclusion while conversations and Codex settings remain protected
 - Managed recovery points with disk usage and a two-valid-point retention policy
+- A read-only diagnostics center with clear pass, notice, and failure results
+- An anonymized JSON support report that excludes names, paths, project details,
+  conversation content, authentication data, and environment values
+- A schema-aware path portability audit that distinguishes translated paths,
+  intentionally excluded machine state, unmapped external paths, and new Codex fields
+- Git-aware project conflict explanations that distinguish matching commits,
+  forward progress, divergent history, and uncommitted changes without modifying Git
+- Durable atomic storage for manifests, reports, registries, mappings, settings,
+  lineage, device state, and restore journals
+- Strict prefix-only chat synchronization: when every existing local chat record
+  and its metadata exactly match the beginning of a longer backup chat, only the
+  proven incoming continuation is adopted automatically
+- Bounded change-history analysis for very large rollouts and hundreds of
+  historical attachment references, with unchanged portable fingerprint meaning
 
 It deliberately excludes source authentication, installation IDs, machine identity,
 caches, locks, sandbox secrets, and active runtime files.
@@ -74,6 +88,11 @@ caches, locks, sandbox secrets, and active runtime files.
    when its files do not need to be recoverable from this backup.
 6. Choose **Verify backup** when creation is complete.
 
+Creation reads each payload once to write its SHA-256 and then performs fast
+database, manifest, path, size, and lineage-structure checks. **Verify backup** is
+the separate independent full reread, so normal creation does not duplicate the
+slowest I/O work.
+
 ## Restore on the new computer
 
 1. Install Codex, open it once, and sign in.
@@ -83,7 +102,10 @@ caches, locks, sandbox secrets, and active runtime files.
 5. Review any external project locations when prompted.
 6. Review the complete comparison plan. Resolve every chat or project conflict and
    review destination-only projects; they are retained unless you explicitly archive
-   or remove them to recovery quarantine.
+   or remove them to recovery quarantine. Select a project conflict to see the
+   available read-only Git explanation. A chat is extended automatically only when
+   its complete local history is a proven unchanged prefix; every other difference
+   remains an explicit conflict. File hashes remain authoritative.
 7. Review the safety-copy location and confirm.
 8. Choose **Verify restore** when restoration is complete.
 
@@ -94,6 +116,20 @@ visible project archives, and every USB backup remain untouched.
 Recovery points are created on the destination computer immediately before a
 restore. They are local rollback copies, not ordinary USB backups, so the list is
 empty until this computer has performed a restore.
+
+Use **System check and diagnostics** whenever backup or restore preparation is
+unclear. It checks Windows compatibility, Codex data access, SQLite consistency,
+the running Codex process, installed version detection, removable storage, free
+space, and recovery points without changing any files or settings. Use **Copy
+report** or **Save report** to share an anonymized JSON result with a tester or
+issue report.
+
+The project-selection screen also shows the path portability result before the
+backup starts. An attention result does not silently block the backup: it identifies
+path-bearing fields that need a future translation rule. Every backup stores a
+separately hashed `reports/portability-audit.json`. It contains only counts,
+classifications, reason codes, and fingerprints for unknown schema fields—never
+raw paths, project names, or user identity.
 
 ## Important security note
 
@@ -109,9 +145,9 @@ schema compatibility, tamper rejection, transactional replacement, exact convers
 mirroring, per-chat and per-project decisions, destination-only project retention,
 archive and recoverable removal, idempotent repeat restore, injected-failure rollback,
 and both GUI languages. See the
-[test results](tests/TEST-RESULTS.md). Version 3.4.0 passes 66/66 checks and 12/12
-automated Windows compatibility scenarios in source, packaged-EXE, and extracted-ZIP
-runs. Physical cross-computer testing remains visible in the
+[test results](tests/TEST-RESULTS.md). The source, packaged EXE, and freshly
+extracted portable ZIP pass 75/75 checks and 12/12 automated Windows compatibility
+scenarios. Physical cross-computer testing remains visible in the
 [Phase 11 matrix](docs/PHASE-11-TEST-MATRIX.md).
 
 ## For developers
@@ -121,7 +157,7 @@ runs. Physical cross-computer testing remains visible in the
 - [Known limitations](docs/KNOWN-LIMITATIONS.md)
 - [Public testing guide](docs/TESTING-GUIDE.md)
 - [Release checklist](docs/RELEASE-CHECKLIST.md)
-- [Implementation phases 0–12](docs/IMPLEMENTATION-ROADMAP.md)
+- [Implementation phases 0–13](docs/IMPLEMENTATION-ROADMAP.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Third-party notices](THIRD-PARTY-NOTICES.txt)

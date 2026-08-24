@@ -23,7 +23,7 @@ import urllib.parse
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
 
-from . import lineage, path_model, project_identity, windows
+from . import atomic_io, lineage, path_model, project_identity, windows
 
 
 FORMAT_ID = "codex-portable-backup"
@@ -153,12 +153,7 @@ def utc_now() -> str:
 
 
 def write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    os.replace(temporary, path)
+    atomic_io.write_json(path, value)
 
 
 def read_json(path: Path) -> Any:
@@ -547,6 +542,13 @@ def build_backup_preview(
         database_info = create_snapshot(source_db, snapshot)
     portable_state = read_portable_state(codex_home)
     candidates = collect_project_candidates({}, database_info, portable_state)
+    from . import portability_audit
+
+    portability = portability_audit.audit(
+        profile,
+        codex_home,
+        extra_project_roots=[str(item["sourcePath"]) for item in candidates],
+    )
 
     projects: list[dict[str, Any]] = []
     for index, item in enumerate(candidates, start=1):
@@ -628,6 +630,7 @@ def build_backup_preview(
             "locked": True,
         },
         "projects": projects,
+        "portabilityAudit": portability,
         "totals": {
             "fileCount": codex_files + total_project_files,
             "totalBytes": codex_bytes + total_project_bytes,
@@ -1752,8 +1755,8 @@ def create_hash_manifest(
                     {"relative_path": relative_path, "size": size, "sha256": digest}
                 )
                 total_bytes += size
-    log("Hash manifest finalized; preparing independent verification...")
-    report_status(0, 0, "Hash manifest complete; preparing independent verification...")
+        log("Hash manifest finalized; preparing fast structural checks...")
+    report_status(0, 0, "Hash manifest complete; preparing structural checks...")
     return len(hash_rows), total_bytes, manifest_digest.hexdigest()
 
 
@@ -1761,7 +1764,7 @@ def write_package_manifest(package_root: Path, package: dict[str, Any]) -> None:
     package_path = package_root / "manifest" / "package.json"
     write_json(package_path, package)
     sidecar = package_root / "manifest" / "package.json.sha256"
-    sidecar.write_text(sha256_file(package_path) + "\n", encoding="ascii")
+    atomic_io.write_text(sidecar, sha256_file(package_path) + "\n", encoding="ascii")
 
 
 def run_validator(
@@ -1795,6 +1798,8 @@ def run_validator(
     command = [sys.executable, str(validator), str(package_root)]
     if allow_building:
         command.append("--allow-building")
+    if not verify_hashes:
+        command.append("--skip-hashes")
     completed = subprocess.run(command, text=True, check=False)
     if completed.returncode != 0:
         raise BackupError(
@@ -1901,6 +1906,28 @@ def build_backup(args: argparse.Namespace) -> Path:
         portable_state = read_portable_state(source_codex)
         portable_profile = copy_portable_codex_profile(source_codex, building, warnings)
         all_candidates = collect_project_candidates(config, database_info, portable_state)
+        from . import portability_audit
+
+        portability = portability_audit.audit(
+            source_profile,
+            source_codex,
+            extra_project_roots=[str(item["sourcePath"]) for item in all_candidates],
+        )
+        write_json(building / "reports" / "portability-audit.json", portability)
+        portability_summary = portability.get("summary") or {}
+        portability_needs_review = int(
+            portability_summary.get("needsReviewReferences", 0)
+        )
+        portability_review_fields = int(
+            portability_summary.get("fieldsNeedingReview", 0)
+        )
+        if portability_needs_review or portability_summary.get("scanErrors"):
+            warnings.append(
+                "Portability audit found "
+                f"{portability_needs_review} path reference(s) in "
+                f"{portability_review_fields} field(s) that need review; "
+                "no source path values were written to the audit report."
+            )
         candidates, excluded_candidates = select_project_candidates(
             all_candidates, config.get("excludedProjectPaths", [])
         )
@@ -2179,6 +2206,7 @@ def build_backup(args: argparse.Namespace) -> Path:
             "orphanSessionIds": orphan_session_ids,
             "extras": extras,
             "portableCodexProfile": portable_profile,
+            "portabilityAudit": portability,
             "selection": {
                 "includedProjectPaths": [str(item["sourcePath"]) for item in candidates],
                 "excludedProjectPaths": [
@@ -2273,6 +2301,20 @@ def build_backup(args: argparse.Namespace) -> Path:
                 "manifestRelativePath": "manifest/inventory.json",
                 "inventoryVersion": 1,
             },
+            "portabilityAudit": {
+                "reportRelativePath": "reports/portability-audit.json",
+                "auditVersion": portability.get("portabilityAuditVersion"),
+                "status": portability.get("status"),
+                "needsReviewReferences": portability_summary.get(
+                    "needsReviewReferences", 0
+                ),
+                "unrecognizedSchemaFields": portability_summary.get(
+                    "unrecognizedSchemaFields", 0
+                ),
+                "fieldsNeedingReview": portability_summary.get(
+                    "fieldsNeedingReview", 0
+                ),
+            },
             "lineage": {
                 "manifestRelativePath": "manifest/lineage.json",
                 "lineageVersion": lineage.LINEAGE_VERSION,
@@ -2309,16 +2351,20 @@ def build_backup(args: argparse.Namespace) -> Path:
         }
         write_package_manifest(building, package)
         validator = toolkit_root / "tools" / "validate_backup.py"
-        log("Running independent preflight validation...")
-        report_status(0, 0, "Step 5/6 — Running independent preflight validation...")
-        run_validator(building, validator, allow_building=True)
+        log("Running fast structural preflight validation...")
+        report_status(0, 0, "Step 5/6 — Checking database, manifests and package structure...")
+        # Every payload byte was already read while creating sha256.csv. Re-reading
+        # the complete package here made Create backup roughly twice as slow.
+        # The separate Verify backup action remains the independent full reread.
+        run_validator(
+            building, validator, allow_building=True, verify_hashes=False
+        )
         package["backupComplete"] = True
         package["completedAtUtc"] = utc_now()
         write_package_manifest(building, package)
-        log("Running final independent validation...")
+        log("Running final structural validation...")
         report_status(0, 0, "Step 6/6 — Performing final structural validation...")
-        # The payload was fully re-read during preflight and is unchanged here;
-        # final validation checks completion metadata, paths and file sizes.
+        # Final validation checks completion metadata, paths and file sizes.
         run_validator(
             building, validator, allow_building=False, verify_hashes=False
         )
@@ -2337,7 +2383,7 @@ def build_backup(args: argparse.Namespace) -> Path:
         return final_path
     except Exception:
         error_path.parent.mkdir(parents=True, exist_ok=True)
-        error_path.write_text(traceback.format_exc(), encoding="utf-8")
+        atomic_io.write_text(error_path, traceback.format_exc())
         try:
             package_path = building / "manifest" / "package.json"
             if package_path.is_file():

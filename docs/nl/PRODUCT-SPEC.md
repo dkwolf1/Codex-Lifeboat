@@ -26,7 +26,7 @@ doel-only gegevens worden nooit stil overschreven.
 ## Handelingen
 
 1. **Back-up maken:** alleen-lezen inventaris, expliciete projectselectie,
-   consistente snapshot, volledige kopie, SHA-256-manifest en onafhankelijke controle.
+   consistente snapshot, volledige kopie, SHA-256-manifest en snelle structuurcontrole.
 2. **Back-up controleren:** alleen-lezen pakket-, hash-, SQLite-, inventaris- en lijncontrole.
 3. **Back-up herstellen:** locatiekoppeling, vergelijkingsplan, conflictkeuzes,
    herstelpunt vooraf, transactionele vervanging en automatische rollback.

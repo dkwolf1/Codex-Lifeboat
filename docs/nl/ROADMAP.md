@@ -1,11 +1,11 @@
 # Roadmap: betrouwbare Codex-back-up en herstel
 
 > Dit is de oorspronkelijke architectuurroadmap. Gebruik voor de actuele status
-> de [implementatieroadmap voor fasen 0–12](IMPLEMENTATION-ROADMAP.md).
+> de [implementatieroadmap voor fasen 0–13](IMPLEMENTATION-ROADMAP.md).
 
 [Specificatie voor universeel heen-en-weer herstellen](ROUND-TRIP-RESTORE-SPEC.md)
 
-[Implementatieroadmap: fases 0–12](IMPLEMENTATION-ROADMAP.md)
+[Implementatieroadmap: fases 0–13](IMPLEMENTATION-ROADMAP.md)
 
 ## 1. Doel
 
@@ -105,7 +105,7 @@ Codex-PortableBackup-YYYYMMDD-HHMMSS/
 4. SQLite wordt via de SQLite Backup API naar een consistente snapshot geschreven. Database-, WAL- en SHM-bestanden worden niet blind gekopieerd.
 5. Projectbestanden en sessiebestanden worden naar een tijdelijke pakketmap gekopieerd.
 6. Voor ieder bestand wordt een SHA-256-hash vastgelegd.
-7. De tijdelijke pakketmap wordt volledig gecontroleerd.
+7. De tijdelijke pakketmap krijgt een snelle structuur-, database- en manifestcontrole.
 8. Alleen na een geslaagde controle krijgt het pakket `BackupComplete: true` en zijn definitieve naam.
 9. Er verschijnt een kort rapport met `GESLAAGD`, aantallen en pakketlocatie.
 
@@ -176,7 +176,9 @@ Acceptatie:
 
 - een onderbroken back-up krijgt nooit status `complete`;
 - de bronbestanden worden niet gewijzigd;
-- een voltooide back-up slaagt direct voor de onafhankelijke controle.
+- een voltooide back-up slaagt direct voor de structuurcontrole;
+- **Back-up controleren** kan ieder payloadbestand daarna onafhankelijk herlezen
+  en via SHA-256 controleren.
 
 ### Fase 2 — Herstel/importeur 2.0
 

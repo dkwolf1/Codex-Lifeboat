@@ -5,11 +5,12 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
-import os
 import re
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Iterable
+
+from . import atomic_io
 
 
 LINEAGE_VERSION = 1
@@ -23,12 +24,7 @@ def _read_json(path: Path) -> Any:
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    os.replace(temporary, path)
+    atomic_io.write_json(path, value)
 
 
 def empty_state() -> dict[str, Any]:
@@ -114,9 +110,25 @@ def portable_replacements(
 @functools.lru_cache(maxsize=8)
 def _replacement_engine(
     replacements: tuple[tuple[str, str], ...]
-) -> tuple[re.Pattern[str] | None, dict[str, str]]:
+) -> tuple[
+    re.Pattern[str] | None,
+    dict[str, str],
+    re.Pattern[str] | None,
+    tuple[str, ...],
+]:
     variants: dict[str, tuple[str, str]] = {}
+    attachment_groups: dict[str, tuple[str, set[str]]] = {}
     for original, token in replacements:
+        canonical = original.replace("/", "\\")
+        separator = canonical.rfind("\\")
+        if token.startswith("%ATTACHMENT:") and separator > 0:
+            parent = canonical[:separator]
+            name = canonical[separator + 1 :]
+            if name:
+                key = parent.casefold()
+                group = attachment_groups.setdefault(key, (parent, set()))
+                group[1].add(name)
+                continue
         for variant in {
             original,
             original.replace("\\", "/"),
@@ -124,19 +136,103 @@ def _replacement_engine(
         }:
             if variant:
                 variants.setdefault(variant.casefold(), (variant, token))
-    if not variants:
-        return None, {}
-    ordered = sorted((item[0] for item in variants.values()), key=len, reverse=True)
-    pattern = re.compile("|".join(re.escape(item) for item in ordered), re.IGNORECASE)
-    return pattern, {key: item[1] for key, item in variants.items()}
+    pattern = None
+    tokens: dict[str, str] = {}
+    if variants:
+        ordered = sorted((item[0] for item in variants.values()), key=len, reverse=True)
+        pattern = re.compile(
+            "|".join(re.escape(item) for item in ordered), re.IGNORECASE
+        )
+        tokens = {key: item[1] for key, item in variants.items()}
+
+    attachment_pattern = None
+    attachment_parents: tuple[str, ...] = ()
+    if attachment_groups:
+        groups: list[str] = []
+        parents: list[str] = []
+        for parent, names in sorted(
+            attachment_groups.values(), key=lambda item: len(item[0]), reverse=True
+        ):
+            parent_pattern = re.escape(parent).replace(r"\\", r"[\\/]")
+            parents.append(parent_pattern)
+            name_pattern = "|".join(
+                re.escape(name) for name in sorted(names, key=len, reverse=True)
+            )
+            groups.append(f"{parent_pattern}[\\\\/](?:{name_pattern})")
+        attachment_pattern = re.compile("|".join(groups), re.IGNORECASE)
+        attachment_parents = tuple(
+            parent.casefold() for parent, _names in attachment_groups.values()
+        )
+    return pattern, tokens, attachment_pattern, attachment_parents
 
 
 def _replace_paths(value: str, replacements: list[tuple[str, str]]) -> str:
     result = value.replace("\r\n", "\n").replace("\r", "\n")
-    pattern, tokens = _replacement_engine(tuple(replacements))
-    if pattern is None:
-        return result
-    return pattern.sub(lambda match: tokens[match.group(0).casefold()], result)
+    pattern, tokens, attachment_pattern, attachment_parents = (
+        _replacement_engine(tuple(replacements))
+    )
+    folded_result = result.casefold() if attachment_parents else ""
+    if (
+        attachment_pattern is not None
+        and attachment_parents
+        and any(parent in folded_result for parent in attachment_parents)
+    ):
+        result = attachment_pattern.sub(
+            lambda match: (
+                "%ATTACHMENT:"
+                + match.group(0).replace("/", "\\").rsplit("\\", 1)[-1].casefold()
+                + "%"
+            ),
+            result,
+        )
+    if pattern is not None:
+        result = pattern.sub(
+            lambda match: tokens[match.group(0).casefold()], result
+        )
+    return result
+
+
+@functools.lru_cache(maxsize=8)
+def _without_attachment_replacements(
+    replacements: tuple[tuple[str, str], ...]
+) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        pair for pair in replacements if not pair[1].startswith("%ATTACHMENT:")
+    )
+
+
+def _replacements_present_in_text(
+    value: str, replacements: list[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    replacement_tuple = tuple(replacements)
+    _pattern, _tokens, _attachments, attachment_parents = _replacement_engine(
+        replacement_tuple
+    )
+    if not attachment_parents:
+        return replacements
+    folded = value.casefold()
+    if any(
+        parent in folded
+        or parent.replace("\\", "\\\\") in folded
+        or parent.replace("\\", "/") in folded
+        for parent in attachment_parents
+    ):
+        return replacements
+    return list(_without_attachment_replacements(replacement_tuple))
+
+
+def _fallback_jsonl_digest(
+    path: Path, replacements: list[tuple[str, str]]
+) -> str:
+    digest = hashlib.sha256()
+    first_line = True
+    with path.open("rb") as handle:
+        for raw_line in handle:
+            line = raw_line.decode("utf-8-sig" if first_line else "utf-8")
+            first_line = False
+            active = _replacements_present_in_text(line, replacements)
+            digest.update(_replace_paths(line, active).encode("utf-8"))
+    return digest.hexdigest()
 
 
 def _normalize_semantic_value(
@@ -154,6 +250,14 @@ def _normalize_semantic_value(
     return value
 
 
+def normalize_semantic_value(
+    value: Any, replacements: list[tuple[str, str]]
+) -> Any:
+    """Return the canonical, path-portable form used by lineage comparisons."""
+
+    return _normalize_semantic_value(value, replacements)
+
+
 def semantic_file_digest(
     path: Path,
     replacements: list[tuple[str, str]],
@@ -161,7 +265,6 @@ def semantic_file_digest(
 ) -> str:
     if path.suffix.casefold() == ".jsonl":
         raw_digest = hashlib.sha256()
-        fallback_digest = hashlib.sha256()
         semantic_digest = hashlib.sha256()
         text_decodable = True
         json_valid = True
@@ -178,16 +281,21 @@ def semantic_file_digest(
                     first_line = False
                     continue
                 first_line = False
-                replaced = _replace_paths(line, replacements)
-                fallback_digest.update(replaced.encode("utf-8"))
                 if not line.strip():
                     continue
+                active_replacements = _replacements_present_in_text(
+                    line, replacements
+                )
                 if len(raw_line) > 2 * 1024 * 1024:
-                    normalized = replaced.rstrip("\n")
+                    normalized = _replace_paths(
+                        line, active_replacements
+                    ).rstrip("\n")
                 else:
                     try:
                         normalized = json.dumps(
-                            _normalize_semantic_value(json.loads(line), replacements),
+                            normalize_semantic_value(
+                                json.loads(line), active_replacements
+                            ),
                             ensure_ascii=False,
                             sort_keys=True,
                             separators=(",", ":"),
@@ -200,7 +308,7 @@ def semantic_file_digest(
         if not text_decodable:
             return raw_digest.hexdigest()
         if not json_valid:
-            return fallback_digest.hexdigest()
+            return _fallback_jsonl_digest(path, replacements)
         return semantic_digest.hexdigest()
 
     try:
@@ -218,7 +326,7 @@ def semantic_file_digest(
     try:
         if path.suffix.casefold() == ".json":
             text = json.dumps(
-                _normalize_semantic_value(json.loads(text), replacements),
+                normalize_semantic_value(json.loads(text), replacements),
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),

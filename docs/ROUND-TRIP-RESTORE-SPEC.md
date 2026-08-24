@@ -79,10 +79,10 @@ directory.
 
 ## Current 3.4.0 delivery boundary
 
-Release 3.4.0 implements phases 0–10.1: portable paths, permanent project identity,
-complete local inventory, backup lineage, reviewed location mapping, read-only
-comparison, transactional project mirrors, and explicit conversation conflict
-decisions, plus reviewed destination-only and independently changed project-root
-decisions, managed recovery retention, and selectable pre-backup inventory. The
-automated Phase 11 matrix passes locally for source, EXE, and extracted ZIP; physical
-cross-computer evidence and the stable-release gate remain in phases 11–12.
+Release 3.4.0 implements phases 0–10.1 and reliability phases 13.1–13.5:
+portable paths, permanent project identity, complete local inventory, backup
+lineage, reviewed location mapping, read-only comparison, transactional project
+mirrors, explicit conflict decisions, diagnostics, path auditing, Git-aware
+explanations, atomic metadata, and strict prefix-only chat continuation. The
+automated Phase 11 matrix passes for source, EXE, and extracted ZIP; physical
+cross-computer evidence and the stable-release gate remain pending.

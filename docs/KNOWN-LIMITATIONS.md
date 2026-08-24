@@ -28,6 +28,16 @@
     individual dependency/cache subfolders are not silently removed. Excluding a
     project keeps its chats as projectless history, but its files are not recoverable
     from that backup and the original working directory may not exist after restore.
-11. Version 3.4.0 is a public pre-release. Source, packaged-EXE, and extracted-ZIP
+11. Git conflict explanations require a readable Git worktree and the Git executable.
+    When either side or the required history is unavailable, Lifeboat reports
+    insufficient evidence and falls back to its complete file hashes and explicit
+    conflict choices. It never fetches missing history.
+12. Automatic chat continuation is intentionally limited to a strict proof: the
+    existing non-empty destination rollout and all relevant metadata must exactly
+    equal the beginning of the longer backup rollout after portable path
+    normalization. Edited records, changed metadata, malformed JSONL, an empty
+    rollout, destination-ahead history, and arbitrary divergence require an
+    explicit user decision. Lifeboat does not perform a general-purpose chat merge.
+13. Version 3.4.0 is a public pre-release. Source, packaged-EXE, and extracted-ZIP
     automation passes on Windows 11, but real Windows 10, second-computer,
     USB-removal, and complete A-to-B-to-A evidence is still being collected.

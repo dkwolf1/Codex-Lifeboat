@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from . import path_model, windows
+from . import atomic_io, path_model, windows
 
 
 MAPPING_REGISTRY_VERSION = 1
@@ -33,12 +33,13 @@ def load_registry(path: Path) -> dict[str, Any]:
 
 
 def save_registry(path: Path, value: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    os.replace(temporary, path)
+    def validate(persisted: Any) -> None:
+        if persisted.get("mappingRegistryVersion") != MAPPING_REGISTRY_VERSION or not isinstance(
+            persisted.get("externalRoots"), dict
+        ):
+            raise LocationMappingError("Refusing to write invalid location mapping registry")
+
+    atomic_io.write_json(path, value, validate=validate)
 
 
 def external_roots(registry: Mapping[str, Any]) -> dict[str, str]:

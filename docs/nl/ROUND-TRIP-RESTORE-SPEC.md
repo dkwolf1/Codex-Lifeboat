@@ -84,10 +84,10 @@ map scannen en opschonen.
 
 ## Huidige afbakening van 3.4.0
 
-Release 3.4.0 bevat fasen 0–10.1: draagbare paden, permanente projectidentiteit,
-volledige lokale inventaris, back-uplijn, gecontroleerde locatiekoppeling,
-alleen-lezen vergelijking, transactionele projectspiegels en expliciete
-conflictkeuzes voor chats, doel-only projecten en onafhankelijk gewijzigde
-projectroots, beheerd bewaren van herstelpunten en selecteerbare inventaris vóór
-de back-up. De automatische fase-11-matrix slaagt lokaal voor broncode, EXE en
-uitgepakte ZIP; praktijkbewijs en de stabiele-releasepoort blijven in fasen 11–12.
+Release 3.4.0 bevat fasen 0–10.1 en betrouwbaarheidsfasen 13.1–13.5: draagbare
+paden, permanente projectidentiteit, volledige lokale inventaris, back-uplijn,
+gecontroleerde locatiekoppeling, alleen-lezen vergelijking, transactionele
+projectspiegels, expliciete conflictkeuzes, diagnose, padaudit, Git-bewuste uitleg,
+atomische metadata en strikte prefix-chatuitbreiding. De automatische fase-11-
+matrix slaagt voor broncode, EXE en uitgepakte ZIP; praktijkbewijs en de stabiele-
+releasepoort staan nog open.

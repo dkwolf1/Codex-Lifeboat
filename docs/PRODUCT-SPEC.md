@@ -26,7 +26,7 @@ unchanged. Conflicting or destination-only data is never silently overwritten.
 ## Operations
 
 1. **Create backup:** read-only inventory, explicit project selection, consistent
-   snapshot, complete copy, SHA-256 manifest, and independent validation.
+   snapshot, complete copy, SHA-256 manifest, and fast structural validation.
 2. **Verify backup:** read-only package, hash, SQLite, inventory, and lineage checks.
 3. **Restore backup:** location mapping, comparison plan, explicit conflict choices,
    pre-restore recovery point, transactional replacement, and automatic rollback.

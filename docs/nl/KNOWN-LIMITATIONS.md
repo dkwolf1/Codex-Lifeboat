@@ -31,6 +31,16 @@
     dependency- of cachemappen worden niet stil verwijderd. Een uitgesloten project
     bewaart zijn chats als projectloze geschiedenis, maar de bestanden zijn niet uit
     die back-up herstelbaar en de oorspronkelijke werkmap kan na herstel ontbreken.
-11. Versie 3.4.0 is een openbare pre-release. De bron-, EXE- en uitgepakte-ZIP-tests
+11. Git-conflictuitleg vereist leesbare Git-werkmappen en het Git-programma. Als een
+    kant of benodigde geschiedenis ontbreekt, meldt Lifeboat onvoldoende bewijs en
+    vallen de volledige bestandshashes en expliciete conflictkeuzes terug als basis.
+    Lifeboat haalt ontbrekende geschiedenis nooit automatisch op.
+12. Automatische chatuitbreiding gebruikt bewust een strikte bewijsregel: de
+    bestaande niet-lege doelrollout en alle relevante metadata moeten na draagbare
+    padnormalisatie exact gelijk zijn aan het begin van de langere back-uprollout.
+    Gewijzigde records of metadata, ongeldige JSONL, een lege rollout, een langere
+    doelchat en iedere andere afwijking vragen een expliciete gebruikerskeuze.
+    Lifeboat voert geen algemene chatmerge uit.
+13. Versie 3.4.0 is een openbare pre-release. De bron-, EXE- en uitgepakte-ZIP-tests
     slagen op Windows 11, maar echt bewijs voor Windows 10, een tweede computer,
     USB-verwijdering en een volledige A-naar-B-naar-A-route wordt nog verzameld.

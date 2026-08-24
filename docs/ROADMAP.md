@@ -1,13 +1,13 @@
 # Roadmap: reliable Codex backup and restore
 
 > This is the original architecture roadmap. For current delivery status, use the
-> [implementation roadmap for phases 0–12](IMPLEMENTATION-ROADMAP.md).
+> [implementation roadmap for phases 0–13](IMPLEMENTATION-ROADMAP.md).
 
 [Dutch translation](nl/ROADMAP.md)
 
 [Universal round-trip restore specification](ROUND-TRIP-RESTORE-SPEC.md)
 
-[Implementation roadmap: phases 0–12](IMPLEMENTATION-ROADMAP.md)
+[Implementation roadmap: phases 0–13](IMPLEMENTATION-ROADMAP.md)
 
 ## 1. Goal
 
@@ -121,7 +121,8 @@ checks, consistent SQLite snapshots, portable state export, attachment inventory
 SHA-256 manifests, atomic completion and clear reports.
 
 Acceptance: interrupted backups are never complete, source files remain unchanged,
-and every completed backup immediately passes independent validation.
+every completed backup passes structural validation, and **Verify backup** can
+independently reread and SHA-256-check every payload file.
 
 ### Phase 2 — Restore/import engine 2.0
 

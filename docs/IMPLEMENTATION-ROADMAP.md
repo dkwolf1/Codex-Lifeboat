@@ -207,7 +207,7 @@ The automated matrix and dual Windows CI profiles are now active. See
 [`PHASE-11-TEST-MATRIX.md`](PHASE-11-TEST-MATRIX.md). Physical Windows 10/11,
 USB-removal, and release-candidate round-trip evidence remain pending.
 The source build, packaged executable, and freshly extracted portable ZIP pass
-the complete local 66-check suite and 12/12 automated scenarios on Windows 11.
+the complete local 75-check suite and 12/12 automated scenarios on Windows 11.
 
 ## Phase 12 — Public release and stable-release evidence
 
@@ -224,3 +224,89 @@ complete and no safety-critical issue remains open.
 Version 3.4.0 is therefore prepared as a transparent pre-release, with English
 primary documentation, Dutch translation, SHA-256 assets, security reporting,
 known limitations, and a structured community compatibility-report form.
+
+## Phase 13 — Reliability and portability follow-up
+
+### Phase 13.1 — Diagnostics center and anonymized report
+
+**Status:** Implemented in 3.4.0 source
+
+- Add one read-only GUI action for system diagnostics.
+- Check Windows 10/11 compatibility, extracted launch location, Codex folder and
+  SQLite integrity, Codex process state, installed version detection, removable
+  storage, local free space, recovery points, and local Lifeboat state.
+- Show pass, notice, and failure results in English and Dutch.
+- Copy or save a structured JSON support report.
+- Exclude user and computer names, drive letters, absolute paths, project and file
+  names, conversation titles/content, authentication data, and environment values.
+- Regression-test both source immutability and anonymization.
+
+**Gate:** The full self-test passes, the diagnostic scan does not change the
+inspected profile, and known synthetic identity values do not occur in the report.
+
+### Phase 13.2 — Schema-aware path portability audit
+
+**Status:** Implemented in 3.4.0 source
+
+- Inspect path-bearing SQLite and global-state fields without changing the source.
+- Distinguish known translated paths, intentionally excluded machine-specific state,
+  known fields with unmapped external paths, and unknown future fields.
+- Show the result before backup and in the diagnostics center.
+- Store an independently hashed `reports/portability-audit.json` in every backup.
+- Store only counts, classifications, reason codes, and stable fingerprints—never
+  paths, project names, user identity, or conversation content.
+- Warn and continue when review is needed; never guess a translation or silently
+  discard an unrecognized field.
+
+**Gate:** Passed. Synthetic known and future fields are classified correctly, the
+scan is read-only, reports contain no raw paths, the audit is hash-verified inside
+the package, and the complete source suite passes.
+
+### Phase 13.3 — Git-aware conflict explanation
+
+**Status:** Implemented in 3.4.0 source
+
+- Inspect both project worktrees without locks or writes when Git is available.
+- Distinguish the same commit, backup-ahead, computer-ahead, divergent, unrelated,
+  dirty-worktree, and insufficient-evidence situations.
+- Show the explanation when a project is selected in restore review.
+- Keep complete Lifeboat file hashes authoritative and retain every existing
+  explicit conflict decision.
+- Never merge, commit, reset, rebase, fetch, push, or alter a worktree.
+
+**Gate:** Passed. Synthetic histories cover forward progress, divergence, and local
+changes; no path is exposed and Git evidence never changes a restore action.
+
+### Phase 13.4 — Durable atomic metadata storage
+
+**Status:** Implemented in 3.4.0 source
+
+- Route critical JSON and checksum metadata through one same-directory writer.
+- Flush the complete temporary file, read it back, parse and optionally validate it,
+  atomically replace the target, and remove temporary evidence on failure.
+- Cover configuration, manifests, reports, restore journals, project identities,
+  lineage/device state, external-root mappings, and checksum sidecars.
+- Preserve the previous complete value when interruption occurs before replacement.
+
+**Gate:** Passed. Injected replacement failure retains the old parseable value,
+successful retry installs the complete new value, and no temporary metadata remains.
+
+### Phase 13.5 — Strict prefix-only conversation synchronization
+
+**Status:** Implemented in 3.4.0
+
+- Compare source and destination rollout JSONL as normalized semantic records,
+  streaming in order and without modifying either file.
+- Automatically accept only a non-empty destination that is an exact prefix of a
+  longer backup conversation and whose relevant database metadata is unchanged.
+- Use the existing transactional restore path to install the complete proven
+  continuation; do not append directly to an active rollout.
+- Keep edited records, metadata differences, malformed data, empty destinations,
+  destination-ahead histories, and arbitrary divergence as explicit conflicts.
+- Show the safe continuation and record counts in English and Dutch restore review.
+
+**Gate:** Passed. Cross-username semantic paths, divergence, metadata changes,
+invalid JSONL, read-only planning, transactional restore, and repeated idempotent
+restore are covered by the complete 75-check source and packaged test gates.
+
+Phase 13.6 (optional backup encryption) remains separate follow-up work.

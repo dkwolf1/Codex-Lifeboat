@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import queue
 import tempfile
@@ -11,7 +10,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from . import backup, location_mapper, recovery, restore, restore_plan, windows
+from . import atomic_io, backup, diagnostics, location_mapper, recovery, restore, restore_plan, windows
 from .validate import validate
 
 
@@ -59,6 +58,8 @@ TEXT = {
         "selection_cancel": "Annuleren",
         "selection_details": "Selecteer een regel om de grootste onderliggende mappen te bekijken.",
         "selection_exclusion_notice": "Uitgesloten projecten: {count}. De bijbehorende chatgeschiedenis blijft aanwezig, maar de projectbestanden kunnen niet vanuit deze back-up worden hersteld.",
+        "selection_portability_ready": "✓ Overdraagbaarheidscontrole: alle {count} gevonden padverwijzingen vallen onder bekende vertaal- of uitsluitingsregels.",
+        "selection_portability_attention": "● Overdraagbaarheidscontrole: {count} padverwijzingen in {fields} veld(en) vragen aandacht. De back-up kan doorgaan en bewaart een geanonimiseerd auditrapport.",
         "details": "Wat is beschermd",
         "chat_details": "{active} actief · {archived} gearchiveerd · {pinned} vastgemaakt · {projectless} projectloos",
         "attachment_details": "Bijlagen: {copied} aanwezig · {missing} historisch niet meer beschikbaar",
@@ -95,6 +96,42 @@ TEXT = {
         "recovery_empty_help": "Een herstelpunt wordt automatisch gemaakt vlak voordat u op deze computer een back-up terugzet.",
         "recovery_confirm": "Alleen oudere, volledig gecontroleerde herstelpunten worden verwijderd. De twee nieuwste geldige punten, ongeldige/onvolledige punten, zichtbare projectarchieven en USB-back-ups blijven bewaard. Doorgaan?",
         "recovery_cleaned": "Opschoning voltooid.\n\nVerwijderde herstelpunten: {points}\nVrijgemaakt: {size}\nGeldige herstelpunten bewaard: {retained}",
+        "diagnostics": "6. Systeemcontrole en diagnose",
+        "diagnostics_title": "Diagnosecentrum",
+        "diagnostics_intro": "Controleert deze computer zonder bestanden of instellingen te wijzigen.",
+        "diagnostics_ready": "Klaar voor gebruik",
+        "diagnostics_attention": "Controleer de aandachtspunten",
+        "diagnostics_blocked": "Actie vereist",
+        "diagnostics_passed": "Geslaagd",
+        "diagnostics_notices": "Aandachtspunten",
+        "diagnostics_failed": "Mislukt",
+        "diagnostics_check": "Controle",
+        "diagnostics_status": "Status",
+        "diagnostics_result": "Resultaat",
+        "diagnostics_pass": "Goed",
+        "diagnostics_notice": "Let op",
+        "diagnostics_fail": "Actie nodig",
+        "diagnostics_privacy": "Het supportrapport is geanonimiseerd: geen gebruikersnaam, computernaam, stationsletter, absoluut pad, projectnaam of chatinhoud.",
+        "diagnostics_copy": "Rapport kopiëren",
+        "diagnostics_save": "Rapport opslaan",
+        "diagnostics_copy_done": "Het geanonimiseerde diagnoserapport staat op het klembord.",
+        "diagnostics_save_done": "Het geanonimiseerde diagnoserapport is opgeslagen:\n\n{path}",
+        "diagnostics_save_failed": "Het diagnoserapport kon niet worden opgeslagen:\n\n{error}",
+        "diagnostics_save_title": "Geanonimiseerd diagnoserapport opslaan",
+        "diagnostics_running": "Systeemcontroles uitvoeren…",
+        "diagnostics_windows": "Windows-compatibiliteit",
+        "diagnostics_launch_location": "Startlocatie toepassing",
+        "diagnostics_codex_data": "Codex-gegevens",
+        "diagnostics_codex_readable": "Toegang tot Codex-gegevens",
+        "diagnostics_database": "Codex-database",
+        "diagnostics_codex_closed": "Status Codex-toepassing",
+        "diagnostics_installation": "Codex-installatie",
+        "diagnostics_removable_storage": "Verwisselbare opslag",
+        "diagnostics_local_space": "Lokale vrije ruimte",
+        "diagnostics_recovery_points": "Herstelpunten",
+        "diagnostics_local_state": "Lokale Lifeboat-status",
+        "diagnostics_portability_audit": "Overdraagbaarheid van paden",
+        "diagnostics_atomic_metadata": "Atomair opslaan van metadata",
         "ready": "Gereed",
         "working": "Bezig… sluit dit venster niet.",
         "choose_destination": "Kies USB-schijf of doelmap voor de back-up",
@@ -139,6 +176,20 @@ TEXT = {
         "plan_disk": "Benodigde vrije ruimte: {required} · Beschikbaar: {free}",
         "plan_blockers": "Blokkeringen:\n{details}",
         "plan_decision_help": "Selecteer een chat of project en kies wat u wilt bewaren.",
+        "plan_item_details": "Geselecteerd onderdeel:\n{reason}\n\nGit-uitleg: {git}",
+        "plan_item_details_plain": "Geselecteerd onderdeel:\n{reason}",
+        "plan_git_exact": "Dezelfde Git-commit en aan beide kanten geen lokale wijzigingen gevonden.",
+        "plan_git_worktree": "Dezelfde Git-commit, maar lokale of niet-gevolgde bestanden verschillen.",
+        "plan_git_backup_ahead": "De back-up bevat latere commits uit dezelfde Git-geschiedenis.",
+        "plan_git_computer_ahead": "Deze computer bevat latere commits uit dezelfde Git-geschiedenis.",
+        "plan_git_diverged": "Beide kanten hebben na een gemeenschappelijke Git-basis verschillende commits gekregen.",
+        "plan_git_unrelated": "De commits hebben geen aantoonbare gemeenschappelijke Git-geschiedenis.",
+        "plan_git_unavailable": "Geen voldoende Git-bewijs beschikbaar; de volledige bestandshashes blijven leidend.",
+        "plan_git_changes": "Lokale wijzigingen: back-up {source}, computer {target}.",
+        "plan_prefix_sync": (
+            "Veilige chatuitbreiding: de {existing} bestaande records zijn exact "
+            "ongewijzigd; {incoming} nieuw(e) record(s) uit de back-up worden toegevoegd."
+        ),
         "keep_source": "Back-up bewaren",
         "keep_target": "Computer bewaren",
         "keep_both": "Beide bewaren",
@@ -191,6 +242,8 @@ TEXT = {
         "selection_cancel": "Cancel",
         "selection_details": "Select a row to inspect its largest child folders.",
         "selection_exclusion_notice": "Excluded projects: {count}. Their conversation history remains available, but their project files cannot be restored from this backup.",
+        "selection_portability_ready": "✓ Portability audit: all {count} detected path references are covered by known translation or exclusion rules.",
+        "selection_portability_attention": "● Portability audit: {count} path references across {fields} field(s) need attention. Backup can continue and stores an anonymized audit report.",
         "details": "What is protected",
         "chat_details": "{active} active · {archived} archived · {pinned} pinned · {projectless} projectless",
         "attachment_details": "Attachments: {copied} available · {missing} historical files no longer available",
@@ -227,6 +280,42 @@ TEXT = {
         "recovery_empty_help": "A recovery point is created automatically just before a backup is restored on this computer.",
         "recovery_confirm": "Only older, fully verified recovery points will be removed. The two newest valid points, invalid/incomplete points, visible project archives, and USB backups remain untouched. Continue?",
         "recovery_cleaned": "Cleanup complete.\n\nRecovery points removed: {points}\nSpace freed: {size}\nValid recovery points retained: {retained}",
+        "diagnostics": "6. System check and diagnostics",
+        "diagnostics_title": "Diagnostics center",
+        "diagnostics_intro": "Checks this computer without changing files or settings.",
+        "diagnostics_ready": "Ready for use",
+        "diagnostics_attention": "Review the notices",
+        "diagnostics_blocked": "Action required",
+        "diagnostics_passed": "Passed",
+        "diagnostics_notices": "Notices",
+        "diagnostics_failed": "Failed",
+        "diagnostics_check": "Check",
+        "diagnostics_status": "Status",
+        "diagnostics_result": "Result",
+        "diagnostics_pass": "Good",
+        "diagnostics_notice": "Notice",
+        "diagnostics_fail": "Action needed",
+        "diagnostics_privacy": "The support report is anonymized: no user name, computer name, drive letter, absolute path, project name, or conversation content.",
+        "diagnostics_copy": "Copy report",
+        "diagnostics_save": "Save report",
+        "diagnostics_copy_done": "The anonymized diagnostic report is on the clipboard.",
+        "diagnostics_save_done": "The anonymized diagnostic report was saved:\n\n{path}",
+        "diagnostics_save_failed": "The diagnostic report could not be saved:\n\n{error}",
+        "diagnostics_save_title": "Save anonymized diagnostic report",
+        "diagnostics_running": "Running system checks…",
+        "diagnostics_windows": "Windows compatibility",
+        "diagnostics_launch_location": "Application launch location",
+        "diagnostics_codex_data": "Codex data",
+        "diagnostics_codex_readable": "Codex data access",
+        "diagnostics_database": "Codex database",
+        "diagnostics_codex_closed": "Codex application state",
+        "diagnostics_installation": "Codex installation",
+        "diagnostics_removable_storage": "Removable storage",
+        "diagnostics_local_space": "Local free space",
+        "diagnostics_recovery_points": "Recovery points",
+        "diagnostics_local_state": "Lifeboat local state",
+        "diagnostics_portability_audit": "Path portability",
+        "diagnostics_atomic_metadata": "Atomic metadata storage",
         "ready": "Ready",
         "working": "Working… do not close this window.",
         "choose_destination": "Select USB drive or backup destination",
@@ -271,6 +360,20 @@ TEXT = {
         "plan_disk": "Required free space: {required} · Available: {free}",
         "plan_blockers": "Blocking issues:\n{details}",
         "plan_decision_help": "Select a conversation or project and choose what to keep.",
+        "plan_item_details": "Selected item:\n{reason}\n\nGit explanation: {git}",
+        "plan_item_details_plain": "Selected item:\n{reason}",
+        "plan_git_exact": "The same Git commit is present and neither worktree reports local changes.",
+        "plan_git_worktree": "The Git commit is the same, but local or untracked files differ.",
+        "plan_git_backup_ahead": "The backup contains later commits from the same Git history.",
+        "plan_git_computer_ahead": "This computer contains later commits from the same Git history.",
+        "plan_git_diverged": "Both sides contain different commits after a shared Git base.",
+        "plan_git_unrelated": "The commits have no provable shared Git history.",
+        "plan_git_unavailable": "Insufficient Git evidence; complete file hashes remain authoritative.",
+        "plan_git_changes": "Local changes: backup {source}, computer {target}.",
+        "plan_prefix_sync": (
+            "Safe chat extension: all {existing} existing records are exactly "
+            "unchanged; {incoming} new backup record(s) will be added."
+        ),
         "keep_source": "Keep backup",
         "keep_target": "Keep computer",
         "keep_both": "Keep both",
@@ -775,6 +878,33 @@ class RestorePlanDialog(tk.Toplevel):
                 button.state(["!disabled"])
             else:
                 button.state(["disabled"])
+        self._refresh_summary()
+
+    def _git_explanation(self, item: dict) -> str:
+        insight = item.get("gitInsight") or {}
+        relation = str(insight.get("historyRelation") or "unknown")
+        key = {
+            "same-commit": (
+                "plan_git_worktree"
+                if insight.get("sourceDirty") or insight.get("targetDirty")
+                else "plan_git_exact"
+            ),
+            "backup-ahead": "plan_git_backup_ahead",
+            "computer-ahead": "plan_git_computer_ahead",
+            "diverged": "plan_git_diverged",
+            "unrelated": "plan_git_unrelated",
+            "unrelated-or-unavailable": "plan_git_unrelated",
+        }.get(relation, "plan_git_unavailable")
+        explanation = self.parent_app.t(key)
+        source_changes = insight.get("sourceChangedEntries")
+        target_changes = insight.get("targetChangedEntries")
+        if source_changes is not None or target_changes is not None:
+            explanation += " " + self.parent_app.t(
+                "plan_git_changes",
+                source=source_changes if source_changes is not None else "?",
+                target=target_changes if target_changes is not None else "?",
+            )
+        return explanation
 
     def _apply_decision(self, decision: str) -> None:
         selected = self.plan_tree.selection()
@@ -844,6 +974,36 @@ class RestorePlanDialog(tk.Toplevel):
                     details="\n".join(f"• {value}" for value in blockers[:8]),
                 )
             )
+        selected = self.plan_tree.selection() if hasattr(self, "plan_tree") else ()
+        selected_item = self._plan_item(selected[0]) if selected else None
+        if selected_item:
+            prefix = selected_item.get("prefixSync") or {}
+            if prefix.get("automatic"):
+                reason = self.parent_app.t(
+                    "plan_prefix_sync",
+                    existing=int(prefix.get("targetRecords", 0)),
+                    incoming=int(prefix.get("additionalSourceRecords", 0)),
+                )
+            else:
+                reason = str(
+                    selected_item.get("originalReason")
+                    or selected_item.get("reason")
+                    or "—"
+                )
+            if selected_item.get("kind") == "project":
+                details.insert(
+                    0,
+                    self.parent_app.t(
+                        "plan_item_details",
+                        reason=reason,
+                        git=self._git_explanation(selected_item),
+                    ),
+                )
+            else:
+                details.insert(
+                    0,
+                    self.parent_app.t("plan_item_details_plain", reason=reason),
+                )
         self.details_label.configure(text="\n".join(details))
         if ready:
             self.approve_button.state(["!disabled"])
@@ -868,14 +1028,33 @@ class BackupSelectionDialog(tk.Toplevel):
         }
         self.project_by_iid: dict[str, dict] = {}
         self.title(parent.t("selection_title"))
-        self.geometry("1180x760")
-        self.minsize(940, 650)
+        screen_width = max(parent.winfo_screenwidth(), 1100)
+        screen_height = max(parent.winfo_screenheight(), 720)
+        width = min(1540, max(1180, int(screen_width * 0.88)))
+        height = min(980, max(760, int(screen_height * 0.88)))
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.minsize(1080, 720)
         self.configure(bg=parent.BG)
-        self.transient(parent)
-        self.grab_set()
+        # Keep this independently restorable from the Windows taskbar. A
+        # transient modal window can disappear behind its owner and then block
+        # the owner's grouped taskbar button from restoring either window.
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build()
         self._refresh()
+        self.after_idle(self._present)
+
+    def _present(self) -> None:
+        if not self.winfo_exists():
+            return
+        self.deiconify()
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            pass
+        self.lift()
+        self.focus_force()
 
     @property
     def excluded_paths(self) -> list[str]:
@@ -949,6 +1128,38 @@ class BackupSelectionDialog(tk.Toplevel):
             ).pack(anchor="w", pady=(2, 0))
             self.metric_values[key] = value
 
+        portability = self.preview.get("portabilityAudit") or {}
+        portability_summary = portability.get("summary") or {}
+        needs_review = int(portability_summary.get("needsReviewReferences", 0))
+        review_fields = int(portability_summary.get("fieldsNeedingReview", 0))
+        path_references = int(portability_summary.get("pathReferences", 0))
+        if needs_review or portability_summary.get("scanErrors"):
+            portability_text = self.parent_app.t(
+                "selection_portability_attention",
+                count=needs_review,
+                fields=review_fields,
+            )
+            portability_color = "#8A5A00"
+            portability_background = "#FFF5E6"
+        else:
+            portability_text = self.parent_app.t(
+                "selection_portability_ready", count=path_references
+            )
+            portability_color = "#0B6B47"
+            portability_background = "#EAF7F1"
+        tk.Label(
+            metrics,
+            text=portability_text,
+            bg=portability_background,
+            fg=portability_color,
+            font=("Segoe UI", 9, "bold"),
+            anchor="w",
+            justify="left",
+            padx=13,
+            pady=9,
+            wraplength=1080,
+        ).grid(row=1, column=0, columnspan=4, sticky="ew", pady=(10, 0))
+
         table_frame = tk.Frame(
             self, bg=self.parent_app.CARD,
             highlightbackground=self.parent_app.BORDER, highlightthickness=1,
@@ -960,7 +1171,7 @@ class BackupSelectionDialog(tk.Toplevel):
         columns = ("include", "name", "location", "files", "size")
         self.tree = ttk.Treeview(
             table_frame, columns=columns, show="headings", selectmode="browse",
-            height=14, style="Selection.Treeview"
+            height=20, style="Selection.Treeview"
         )
         self.tree.heading("include", text=self.parent_app.t("selection_include"))
         self.tree.heading("name", text=self.parent_app.t("selection_name"))
@@ -1171,6 +1382,284 @@ class BackupSelectionDialog(tk.Toplevel):
         self.destroy()
 
 
+class DiagnosticsDialog(tk.Toplevel):
+    STATUS_COLORS = {
+        diagnostics.STATUS_PASS: "#18A66A",
+        diagnostics.STATUS_NOTICE: "#C47A00",
+        diagnostics.STATUS_FAIL: "#B42318",
+    }
+
+    def __init__(self, parent: "TransferApp", report: dict) -> None:
+        super().__init__(parent)
+        self.parent_app = parent
+        self.report = report
+        self.title(parent.t("diagnostics_title"))
+        self.geometry("1040x720")
+        self.minsize(820, 590)
+        self.configure(background=parent.BG)
+        self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self._build()
+        self.grab_set()
+
+    def _card(self, parent: tk.Widget, column: int, value: int, label: str) -> None:
+        card = tk.Frame(
+            parent, bg=self.parent_app.CARD,
+            highlightbackground=self.parent_app.BORDER,
+            highlightthickness=1, padx=18, pady=12,
+        )
+        card.grid(
+            row=0, column=column, sticky="ew",
+            padx=(0 if column == 0 else 6, 0),
+        )
+        parent.columnconfigure(column, weight=1)
+        tk.Label(
+            card, text=str(value), bg=self.parent_app.CARD,
+            fg=self.parent_app.NAVY, font=("Segoe UI", 18, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            card, text=label, bg=self.parent_app.CARD,
+            fg=self.parent_app.MUTED, font=("Segoe UI", 9),
+        ).pack(anchor="w", pady=(3, 0))
+
+    def _localized_summary(self, item: dict) -> str:
+        if self.parent_app.language.get() == "en":
+            return str(item.get("summary") or "")
+        facts = item.get("facts") or {}
+        check_id = item.get("id")
+        status = item.get("status")
+        if check_id == "windows":
+            return (
+                f"Windows {facts.get('release', '?')} is geschikt."
+                if status == diagnostics.STATUS_PASS
+                else "Deze computer gebruikt geen ondersteunde Windows 10/11-omgeving."
+            )
+        if check_id == "launch_location":
+            return (
+                "Codex Lifeboat is vanuit een uitgepakte map gestart."
+                if status == diagnostics.STATUS_PASS
+                else "Codex Lifeboat lijkt rechtstreeks vanuit een ZIP-bestand te zijn gestart."
+            )
+        if check_id == "codex_data":
+            return (
+                "De Codex-map en statusdatabase zijn gevonden."
+                if status == diagnostics.STATUS_PASS
+                else "De Codex-map of statusdatabase ontbreekt."
+            )
+        if check_id == "codex_readable":
+            return (
+                "De Codex-map kan worden gelezen."
+                if status == diagnostics.STATUS_PASS
+                else "De Codex-map kan niet worden gelezen."
+            )
+        if check_id == "database":
+            return (
+                "De database is consistent en bevat "
+                f"{facts.get('threadCount', 0)} chat(s) en "
+                f"{facts.get('projectCount', 0)} geregistreerde project(en)."
+                if status == diagnostics.STATUS_PASS
+                else "De database kon niet veilig worden gecontroleerd."
+            )
+        if check_id == "portability_audit":
+            return (
+                f"{facts.get('coveredReferences', 0)} padverwijzing(en) zijn afgedekt; "
+                f"{facts.get('needsReviewReferences', 0)} verwijzing(en) in "
+                f"{facts.get('fieldsNeedingReview', 0)} veld(en) vragen aandacht."
+                if facts.get("needsReviewReferences") or facts.get("scanErrors")
+                else f"Alle {facts.get('pathReferences', 0)} gevonden padverwijzingen vallen onder bekende vertaal- of uitsluitingsregels."
+            )
+        if check_id == "codex_closed":
+            return (
+                "Codex draait nog; sluit het programma vóór back-up of herstel."
+                if facts.get("running")
+                else "Codex draait niet."
+            )
+        if check_id == "installation":
+            return (
+                f"Codex-installatie versie {facts.get('version', 'onbekend')} is gevonden."
+                if facts.get("detected")
+                else "De geïnstalleerde Codex-versie kon niet worden vastgesteld."
+            )
+        if check_id == "removable_storage":
+            return (
+                f"{facts.get('count', 0)} verwisselbaar opslagapparaat/apparaten gevonden."
+                if facts.get("count")
+                else "Geen verwisselbare opslag gevonden; u kunt nog steeds handmatig een map kiezen."
+            )
+        if check_id == "local_space":
+            return (
+                "Er is minimaal 5 GiB vrije ruimte op het gebruikersvolume."
+                if status == diagnostics.STATUS_PASS
+                else "Er is minder dan 5 GiB vrije ruimte op het gebruikersvolume."
+            )
+        if check_id == "recovery_points":
+            return (
+                f"{facts.get('validPoints', 0)} geldig(e) herstelpunt(en) en "
+                f"{facts.get('extraRetainedPoints', 0)} extra bewaard(e) punt(en) gevonden."
+            )
+        if check_id == "local_state":
+            return (
+                "De lokale Lifeboat-statusmap is aanwezig."
+                if facts.get("present")
+                else "Er is nog geen lokale Lifeboat-statusmap; deze wordt aangemaakt wanneer nodig."
+            )
+        if check_id == "atomic_metadata":
+            return (
+                f"Alle {facts.get('hardenedStoreCount', 0)} kritieke metadatagroepen "
+                "gebruiken gecontroleerde vervanging vanuit dezelfde map."
+            )
+        return str(item.get("summary") or "")
+
+    def _build(self) -> None:
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+        body = ttk.Frame(self, padding=(28, 24, 28, 20), style="App.TFrame")
+        body.grid(row=0, column=0, sticky="nsew")
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(4, weight=1)
+
+        ttk.Label(
+            body, text=self.parent_app.t("diagnostics_title"),
+            style="DialogTitle.TLabel",
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            body, text=self.parent_app.t("diagnostics_intro"),
+            style="Body.TLabel",
+        ).grid(row=1, column=0, sticky="w", pady=(5, 12))
+
+        summary = self.report.get("summary") or {}
+        overall = str(summary.get("overall") or "attention")
+        status_key = {
+            "ready": "diagnostics_ready",
+            "attention": "diagnostics_attention",
+            "blocked": "diagnostics_blocked",
+        }.get(overall, "diagnostics_attention")
+        tk.Label(
+            body,
+            text="●  " + self.parent_app.t(status_key),
+            bg=self.parent_app.BG,
+            fg={
+                "ready": self.parent_app.SUCCESS,
+                "attention": "#C47A00",
+                "blocked": "#B42318",
+            }.get(overall, "#C47A00"),
+            font=("Segoe UI", 11, "bold"),
+        ).grid(row=2, column=0, sticky="w", pady=(0, 12))
+
+        cards = tk.Frame(body, bg=self.parent_app.BG)
+        cards.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        self._card(
+            cards, 0, int(summary.get("passed", 0)),
+            self.parent_app.t("diagnostics_passed"),
+        )
+        self._card(
+            cards, 1, int(summary.get("notices", 0)),
+            self.parent_app.t("diagnostics_notices"),
+        )
+        self._card(
+            cards, 2, int(summary.get("failed", 0)),
+            self.parent_app.t("diagnostics_failed"),
+        )
+
+        table = tk.Frame(
+            body, bg=self.parent_app.CARD,
+            highlightbackground=self.parent_app.BORDER, highlightthickness=1,
+        )
+        table.grid(row=4, column=0, sticky="nsew")
+        table.columnconfigure(0, weight=1)
+        table.rowconfigure(0, weight=1)
+        self.tree = ttk.Treeview(
+            table, columns=("status", "check", "result"), show="headings",
+            style="Selection.Treeview",
+        )
+        self.tree.heading("status", text=self.parent_app.t("diagnostics_status"))
+        self.tree.heading("check", text=self.parent_app.t("diagnostics_check"))
+        self.tree.heading("result", text=self.parent_app.t("diagnostics_result"))
+        self.tree.column("status", width=115, minwidth=95, stretch=False)
+        self.tree.column("check", width=210, minwidth=160, stretch=False)
+        self.tree.column("result", width=620, minwidth=300, stretch=True)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        scroll = ttk.Scrollbar(table, orient="vertical", command=self.tree.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.tree.configure(yscrollcommand=scroll.set)
+        for status_name, color in self.STATUS_COLORS.items():
+            self.tree.tag_configure(status_name, foreground=color)
+        for item in self.report.get("checks", []):
+            check_id = str(item.get("id") or "")
+            item_status = str(item.get("status") or diagnostics.STATUS_NOTICE)
+            self.tree.insert(
+                "", "end",
+                values=(
+                    "●  " + self.parent_app.t(f"diagnostics_{item_status}"),
+                    self.parent_app.t(f"diagnostics_{check_id}"),
+                    self._localized_summary(item),
+                ),
+                tags=(item_status,),
+            )
+
+        tk.Label(
+            body,
+            text="🔒  " + self.parent_app.t("diagnostics_privacy"),
+            bg="#EAF2FD", fg=self.parent_app.NAVY,
+            font=("Segoe UI", 9), anchor="w", justify="left",
+            padx=14, pady=10, wraplength=920,
+        ).grid(row=5, column=0, sticky="ew", pady=(12, 0))
+
+        actions = ttk.Frame(body, style="App.TFrame")
+        actions.grid(row=6, column=0, sticky="e", pady=(14, 0))
+        ttk.Button(
+            actions, text=self.parent_app.t("diagnostics_copy"),
+            command=self._copy, style="Secondary.TButton",
+        ).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(
+            actions, text=self.parent_app.t("diagnostics_save"),
+            command=self._save, style="Primary.TButton",
+        ).grid(row=0, column=1, padx=(0, 8))
+        ttk.Button(
+            actions, text=self.parent_app.t("close"), command=self.destroy,
+            style="Secondary.TButton",
+        ).grid(row=0, column=2)
+
+    def _copy(self) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(diagnostics.report_json(self.report))
+        self.update_idletasks()
+        messagebox.showinfo(
+            self.parent_app.t("diagnostics_title"),
+            self.parent_app.t("diagnostics_copy_done"), parent=self,
+        )
+
+    def _save(self) -> None:
+        stamp = str(self.report.get("createdAtUtc") or "")
+        stamp = stamp.replace(":", "").replace("-", "").replace("+0000", "Z")
+        stamp = stamp.replace("T", "-")[:15]
+        destination = filedialog.asksaveasfilename(
+            parent=self,
+            title=self.parent_app.t("diagnostics_save_title"),
+            defaultextension=".json",
+            initialfile=f"Codex-Lifeboat-Diagnostics-{stamp or 'report'}.json",
+            filetypes=(("JSON", "*.json"), ("All files", "*.*")),
+        )
+        if not destination:
+            return
+        path = Path(destination)
+        try:
+            diagnostics.save_report(path, self.report)
+        except OSError as exc:
+            messagebox.showerror(
+                self.parent_app.t("error"),
+                self.parent_app.t(
+                    "diagnostics_save_failed", error=type(exc).__name__
+                ),
+                parent=self,
+            )
+            return
+        messagebox.showinfo(
+            self.parent_app.t("diagnostics_title"),
+            self.parent_app.t("diagnostics_save_done", path=path), parent=self,
+        )
+
+
 class TransferApp(tk.Tk):
     BG = "#F3F6FA"
     CARD = "#FFFFFF"
@@ -1197,12 +1686,19 @@ class TransferApp(tk.Tk):
         self._configure_styles()
         self._build()
         self._translate()
+        self.bind("<Map>", self._restore_from_taskbar, add="+")
         self.after(100, self._drain_messages)
         self.after(1000, self._refresh_drives)
         if self.launch_blocked:
             for button in self.action_buttons:
                 button.configure(state="disabled")
             self.after(250, self._show_extract_required)
+
+    def _restore_from_taskbar(self, _event=None) -> None:
+        """Make a restored frozen Tk window reliably return to the foreground."""
+        if self.state() == "iconic":
+            return
+        self.after_idle(self.lift)
 
     def t(self, key: str, **values) -> str:
         return TEXT[self.language.get()][key].format(**values)
@@ -1396,12 +1892,19 @@ class TransferApp(tk.Tk):
         self.recovery_button.grid(
             row=2, column=0, columnspan=2, sticky="ew", pady=(7, 3)
         )
+        self.diagnostics_button = ttk.Button(
+            buttons, command=self._diagnostics, style="Action.TButton"
+        )
+        self.diagnostics_button.grid(
+            row=3, column=0, columnspan=2, sticky="ew", pady=(7, 3)
+        )
         self.action_buttons = (
             self.backup_button,
             self.verify_backup_button,
             self.restore_button,
             self.verify_restore_button,
             self.recovery_button,
+            self.diagnostics_button,
         )
 
         status_frame = ttk.Frame(self, padding=(28, 5), style="App.TFrame")
@@ -1508,6 +2011,7 @@ class TransferApp(tk.Tk):
         self.restore_button.configure(text=self.t("restore"))
         self.verify_restore_button.configure(text=self.t("verify_restore"))
         self.recovery_button.configure(text=self.t("recovery"))
+        self.diagnostics_button.configure(text=self.t("diagnostics"))
         self.activity_label.configure(text=self.t("activity"))
         self._render_last_result()
         if self.launch_blocked:
@@ -1680,8 +2184,16 @@ class TransferApp(tk.Tk):
         self._run(preview_work, self._continue_backup_from_preview)
 
     def _continue_backup_from_preview(self, preview: dict) -> None:
+        # The selection window is intentionally non-modal so Windows can restore
+        # it from the taskbar; keep the main actions inactive until it closes.
+        for button in self.action_buttons:
+            button.configure(state="disabled")
         dialog = BackupSelectionDialog(self, preview)
         self.wait_window(dialog)
+        for button in self.action_buttons:
+            button.configure(
+                state="disabled" if self.launch_blocked else "normal"
+            )
         if not dialog.approved:
             return
         drives = windows.removable_drives()
@@ -1713,22 +2225,19 @@ class TransferApp(tk.Tk):
             config_root = Path(tempfile.gettempdir()) / "Codex-Lifeboat"
             config_root.mkdir(parents=True, exist_ok=True)
             config_path = config_root / "backup-config.json"
-            config_path.write_text(
-                json.dumps(
-                    {
-                        "configVersion": 1,
-                        "destinationRoot": selected,
-                        "includeAttachments": True,
-                        "projects": [],
-                        "excludedProjectPaths": dialog.excluded_paths,
-                        "additionalPortablePaths": [],
-                        "excludeDirectoryNames": [],
-                        "versionCheck": self.last_version_check,
-                        "knownFolders": windows.known_folders(),
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
+            atomic_io.write_json(
+                config_path,
+                {
+                    "configVersion": 1,
+                    "destinationRoot": selected,
+                    "includeAttachments": True,
+                    "projects": [],
+                    "excludedProjectPaths": dialog.excluded_paths,
+                    "additionalPortablePaths": [],
+                    "excludeDirectoryNames": [],
+                    "versionCheck": self.last_version_check,
+                    "knownFolders": windows.known_folders(),
+                },
             )
             backup.set_progress_callback(self._log_callback)
             backup.set_status_callback(self._status_callback)
@@ -1776,6 +2285,13 @@ class TransferApp(tk.Tk):
         self._run(
             lambda: recovery.list_points(Path.home()),
             lambda result: RecoveryDialog(self, result),
+        )
+
+    def _diagnostics(self) -> None:
+        self._append_log(self.t("diagnostics_running"))
+        self._run(
+            diagnostics.build_report,
+            lambda result: DiagnosticsDialog(self, result),
         )
 
     def _clean_recovery(self, dialog: RecoveryDialog) -> None:

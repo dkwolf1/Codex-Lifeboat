@@ -38,6 +38,11 @@ is ondertekend. Controleer voor gebruik het meegeleverde `SHA256.txt`.
    als de bestanden niet vanuit deze back-up hersteld hoeven te kunnen worden.
 6. Kies daarna **Back-up controleren**.
 
+Bij het aanmaken wordt iedere payload eenmaal gelezen om de SHA-256 vast te leggen,
+gevolgd door snelle controles van database, manifesten, paden, omvang en back-uplijn.
+**Back-up controleren** is de aparte volledige onafhankelijke herlezing, zodat het
+langzaamste leeswerk niet direct dubbel wordt uitgevoerd.
+
 ## Herstellen op een nieuwe computer
 
 1. Installeer Codex, open het eenmaal en meld je aan.
@@ -50,6 +55,10 @@ is ondertekend. Controleer voor gebruik het meegeleverde `SHA256.txt`.
    archiveert of naar herstelquarantaine verwijdert.
 7. Controleer de locatie van de veiligheidskopie en bevestig.
 8. Kies daarna **Herstel controleren**.
+
+Een chat wordt alleen automatisch uitgebreid als de volledige lokale geschiedenis
+aantoonbaar een ongewijzigde prefix van de langere back-upchat is. Ieder ander
+verschil blijft een expliciet conflict met een gebruikerskeuze.
 
 Gebruik **Herstelpunten beheren** om lokale herstelopslag te bekijken of alleen
 oudere gecontroleerde punten veilig op te ruimen. De twee nieuwste geldige punten,
@@ -77,9 +86,37 @@ leeg totdat op deze computer een back-up is teruggezet.
   mappen per project; alle projecten zijn standaard geselecteerd
 - Optioneel een heel project uitsluiten terwijl chats en Codex-instellingen meegaan
 - Beheerde herstelpunten met schijfgebruik en behoud van twee geldige punten
+- Een alleen-lezen diagnosecentrum met duidelijke geslaagd-, let-op- en foutstatus
+- Een geanonimiseerd JSON-supportrapport zonder namen, paden, projectgegevens,
+  chatinhoud, aanmeldgegevens of omgevingswaarden
+- Een schemabewuste overdraagbaarheidsaudit die vertaalde paden, bewust uitgesloten
+  computerstatus, niet-gekoppelde externe paden en nieuwe Codex-velden onderscheidt
+- Git-bewuste uitleg bij projectconflicten voor gelijke commits, voortgang,
+  uiteengelopen geschiedenis en lokale wijzigingen, zonder Git te veranderen
+- Duurzame atomische opslag voor manifesten, rapporten, registers, koppelingen,
+  instellingen, back-uplijnen, apparaatstatus en hersteljournalen
+- Strikte prefix-synchronisatie voor chats: alleen wanneer alle bestaande lokale
+  chatrecords en metadata exact het begin van een langere back-upchat vormen,
+  wordt de aantoonbaar nieuwe voortzetting automatisch overgenomen
+- Begrensde analyse van zeer grote rollouts en honderden historische
+  bijlageverwijzingen, zonder de betekenis van draagbare vingerafdrukken te wijzigen
 
 De aanmelding, installatie-id, computeridentiteit, caches, locks en
 sandboxgeheimen van de broncomputer worden bewust niet teruggezet.
+
+Gebruik **Systeemcontrole en diagnose** wanneer de voorbereiding van een back-up
+of herstelactie onduidelijk is. De functie controleert zonder wijzigingen onder
+andere Windows, toegang tot Codex-gegevens, de SQLite-database, een nog draaiende
+Codex-app, versiedetectie, verwisselbare opslag, vrije ruimte en herstelpunten.
+Met **Rapport kopiëren** of **Rapport opslaan** deelt u een geanonimiseerd
+JSON-resultaat met een tester of GitHub-issue.
+
+Het projectkeuzescherm toont vóór de back-up ook het resultaat van de padaudit.
+Een let-opmelding blokkeert de back-up niet stil, maar benoemt velden waarvoor een
+toekomstige vertaalregel nodig kan zijn. Iedere back-up bevat een afzonderlijk
+gehasht `reports/portability-audit.json` met alleen aantallen, classificaties,
+redencodes en vingerafdrukken van onbekende schemavelden—nooit echte paden,
+projectnamen of gebruikersidentiteit.
 
 ## Beveiliging
 
@@ -88,8 +125,8 @@ en andere vertrouwelijke projectgegevens bevatten. Bewaar de USB-stick veilig.
 
 Codex Lifeboat is een onafhankelijk communityproject en geen officieel OpenAI-product.
 
-Versie 3.4.0 slaagt voor 66/66 controles en 12/12 geautomatiseerde
-Windows-scenario's met de broncode, verpakte EXE en opnieuw uitgepakte ZIP.
+De broncode, verpakte EXE en opnieuw uitgepakte ZIP slagen voor 75/75 controles
+en 12/12 geautomatiseerde Windows-scenario's.
 Praktijktests staan in de [fase-11-matrix](../PHASE-11-TEST-MATRIX.md).
 
 Ontwikkelaars vinden de publicatiestappen in de

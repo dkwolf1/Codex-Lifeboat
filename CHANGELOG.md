@@ -2,6 +2,56 @@
 
 ## 3.4.0 - 2026-08-24
 
+- Made normal backup creation substantially faster by avoiding an immediate
+  second read of every copied payload byte. Creation still writes SHA-256 for
+  every file and performs database, manifest, size, path, and lineage structure
+  checks; **Verify backup** remains the explicit independent full SHA-256 reread.
+- Full verification no longer reparses huge conversation JSONL files after their
+  bytes have already passed SHA-256 verification. Semantic lineage is calculated
+  once during creation and its hashed manifest and payload resolution are checked.
+- Enlarged the project-selection window to use the available screen, increased
+  the visible project rows, and made it independently restorable from the Windows
+  taskbar instead of relying on a hidden transient modal owner.
+- Fixed severe change-history slowdown when hundreds of historical attachment
+  paths occur alongside very large conversation rollouts. Attachment paths are
+  grouped by parent location and absent groups are rejected with a fast precheck,
+  while semantic fingerprints remain byte-for-byte compatible.
+- Final structural validation no longer repeats semantic rollout analysis.
+- Added phase 13.5: strict prefix-only conversation synchronization proves that
+  every existing destination record and all chat metadata match the beginning of
+  the longer backup chat before adopting its incoming continuation automatically.
+- Any edited record, metadata difference, unreadable JSONL, empty destination, or
+  destination-ahead history remains an explicit conflict; no arbitrary chat merge
+  or in-place append is attempted.
+- Added read-only, cross-username, divergence, invalid-data, transactional-restore,
+  and repeated-restore regression coverage for the prefix proof.
+- Added phase 13.4: one durable atomic metadata writer now flushes, parses,
+  validates, and replaces critical JSON and checksum state from the same folder.
+- Backup configuration, manifests, reports, restore journals, project identity,
+  lineage/device state, and external-root mappings use the hardened writer.
+- Added interruption regression coverage proving a failed final replacement keeps
+  the complete previous value and removes temporary metadata.
+- Added phase 13.3: read-only Git-aware explanations for project conflicts.
+- Restore review now distinguishes matching commits, backup-ahead, computer-ahead,
+  divergent history, unrelated history, and uncommitted/untracked changes.
+- Git evidence is advisory only: it never merges, commits, resets, pushes, or changes
+  a restore decision, and complete Lifeboat hashes remain authoritative.
+- Added phase 13.2: a read-only, schema-aware audit for path references in known
+  and future Codex database and global-state fields.
+- The audit distinguishes translated paths, intentionally excluded machine state,
+  unmapped external paths, and unrecognized schema fields without guessing fixes.
+- Project selection and diagnostics show the audit result, while every backup
+  stores a separately hashed `reports/portability-audit.json`.
+- Audit reports never contain raw paths; unknown field names are represented by
+  stable fingerprints, and attention results warn without blocking backup.
+- Added phase 13.1: a read-only diagnostics center covering Windows, Codex data,
+  SQLite integrity, application state, installation detection, removable storage,
+  free space, recovery points, and local Lifeboat state.
+- Added copy and save actions for an anonymized JSON support report that excludes
+  user/computer names, drive letters, absolute paths, project/file names,
+  conversation content, authentication data, and environment values.
+- Added regression coverage proving diagnostics leave the inspected source tree
+  unchanged and do not expose the synthetic profile identity.
 - Prepared phase 12 as a clearly marked public testing release rather than a
   stable claim while physical Windows 10 and multi-computer evidence is pending.
 - Added English-first and Dutch testing guides, release notes, release checklists,

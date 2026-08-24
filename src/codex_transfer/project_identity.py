@@ -6,11 +6,12 @@ import datetime as dt
 import hashlib
 import json
 import ntpath
-import os
 import re
 import uuid
 from pathlib import Path
 from typing import Any, Iterable
+
+from . import atomic_io
 
 
 REGISTRY_VERSION = 1
@@ -94,12 +95,13 @@ def save_registry(path: Path, registry: dict[str, Any]) -> None:
     errors = validate_registry(registry)
     if errors:
         raise IdentityError("Refusing to write invalid identity registry: " + "; ".join(errors))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + f".{uuid.uuid4().hex}.tmp")
-    temporary.write_text(
-        json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    os.replace(temporary, path)
+    atomic_io.write_json(path, registry, validate=lambda value: _require_valid(value))
+
+
+def _require_valid(value: Any) -> None:
+    errors = validate_registry(value)
+    if errors:
+        raise IdentityError("Invalid persisted identity registry: " + "; ".join(errors))
 
 
 def _git_remote_hashes(project_path: Path) -> list[str]:

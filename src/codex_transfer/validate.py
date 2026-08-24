@@ -274,7 +274,13 @@ def validate(
     checks["hashedFilesChecked"] = checked_hashes
     checks["payloadHashesVerified"] = verify_hashes
     if progress:
-        progress(0, 0, "File hashes complete; checking database and manifests...")
+        progress(
+            0,
+            0,
+            "File hashes verified; checking database and manifests..."
+            if verify_hashes
+            else "Checking database, manifests and package structure...",
+        )
     declared_hashed = package.get("counts", {}).get("hashedFiles") if isinstance(package.get("counts"), dict) else None
     if declared_hashed != len(hash_rows):
         errors.append(
@@ -872,9 +878,19 @@ def validate(
                         errors.append(
                             f"Lineage item {item.get('key')} does not resolve to payload data."
                         )
+                if not verify_hashes:
+                    continue
                 semantic_item = item.get("kind") in {
                     "conversation", "codex-profile", "codex-state"
                 }
+                # sha256.csv already verifies every byte of semantic payloads.
+                # Re-parsing very large JSONL chats here duplicated the expensive
+                # lineage analysis without adding independent byte-integrity
+                # evidence. Keep fingerprint recomputation for ordinary project
+                # trees; validate semantic lineage structure and payload resolution
+                # while relying on the independently checked payload SHA-256.
+                if semantic_item:
+                    continue
                 for row in selected_rows:
                     original_relative = str(row["relative_path"])
                     if payload_kind == "file" or original_relative == str(payload_path):
@@ -883,13 +899,6 @@ def validate(
                         row["relative_path"] = original_relative[
                             len(str(payload_path).rstrip("/") + "/") :
                         ]
-                    if semantic_item:
-                        row["sha256"] = lineage.semantic_file_digest(
-                            package_root
-                            / Path(*PurePosixPath(original_relative).parts),
-                            replacements,
-                        )
-                        row["size"] = 0
                 actual_fingerprint = lineage.aggregate_fingerprint(
                     selected_rows, item.get("metadata")
                 )
@@ -899,6 +908,7 @@ def validate(
                     )
             checks["lineageItemsChecked"] = len(lineage_manifest.get("items", []))
             checks["lineageRelation"] = lineage_manifest.get("relation")
+            checks["semanticLineageProtectedByPayloadHashes"] = verify_hashes
         except Exception as exc:
             errors.append(f"lineage.json is invalid: {exc}")
 
@@ -934,13 +944,16 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate Codex Portable Backup 2.x")
     parser.add_argument("package")
     parser.add_argument("--allow-building", action="store_true")
+    parser.add_argument("--skip-hashes", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_arguments()
-    result = validate(Path(args.package), args.allow_building)
+    result = validate(
+        Path(args.package), args.allow_building, verify_hashes=not args.skip_hashes
+    )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

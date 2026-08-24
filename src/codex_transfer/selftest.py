@@ -9,15 +9,21 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from unittest import mock
 from pathlib import Path
 from typing import Any
 
 from . import (
     backup,
     compatibility_matrix,
+    conversation_prefix,
+    diagnostics,
+    atomic_io,
+    git_insight,
     lineage,
     location_mapper,
     path_model,
+    portability_audit,
     project_identity,
     recovery,
     restore,
@@ -745,6 +751,7 @@ def _gui_smoke_test() -> bool:
     from .gui import (
         BackupResultDialog,
         BackupSelectionDialog,
+        DiagnosticsDialog,
         RecoveryDialog,
         RestorePlanDialog,
         TransferApp,
@@ -765,6 +772,7 @@ def _gui_smoke_test() -> bool:
             and app.t("archive") == "Project archiveren"
             and app.t("delete") == "Project verwijderen"
             and app.t("recovery") == "5. Herstelpunten beheren"
+            and app.t("diagnostics") == "6. Systeemcontrole en diagnose"
         )
         app.language.set("en")
         app._translate()
@@ -777,6 +785,7 @@ def _gui_smoke_test() -> bool:
             and app.t("archive") == "Archive project"
             and app.t("delete") == "Delete project"
             and app.t("recovery") == "5. Manage recovery points"
+            and app.t("diagnostics") == "6. System check and diagnostics"
         )
         blocked_dialog = RestorePlanDialog(
             app,
@@ -932,6 +941,8 @@ def _gui_smoke_test() -> bool:
             selection_dialog.selected_summary
             == {"projects": 1, "files": 13, "bytes": 170}
             and not selection_dialog.excluded_paths
+            and int(selection_dialog.tree.cget("height")) >= 20
+            and selection_dialog.grab_current() is None
         )
         selection_dialog._select_none()
         selection_exclusion_visible = bool(
@@ -958,12 +969,31 @@ def _gui_smoke_test() -> bool:
             and recovery_dialog.clean_button.instate(["disabled"])
         )
         recovery_dialog.destroy()
+        diagnostics_dialog = DiagnosticsDialog(
+            app,
+            {
+                "createdAtUtc": "2026-08-24T12:00:00+00:00",
+                "summary": {"overall": "ready", "passed": 1, "notices": 0, "failed": 0},
+                "checks": [{
+                    "id": "windows", "status": "pass",
+                    "summary": "Windows 11 detected.",
+                    "facts": {"release": "11", "architecture": "AMD64"},
+                }],
+            },
+        )
+        app.update_idletasks()
+        diagnostics_dialog_created = bool(
+            diagnostics_dialog.winfo_exists() == 1
+            and len(diagnostics_dialog.tree.get_children()) == 1
+        )
+        diagnostics_dialog.destroy()
         return bool(
-            dutch and english and len(app.action_buttons) == 5
+            dutch and english and len(app.action_buttons) == 6
             and blocked_is_disabled and ready_is_enabled
             and decision_button_enabled and decision_resolved
             and archive_button_enabled and project_decision_resolved
             and result_dialog_created and recovery_dialog_created
+            and diagnostics_dialog_created
             and selection_default_complete and selection_exclusion_visible
         )
     finally:
@@ -1303,6 +1333,12 @@ def _streaming_lineage_digest_test(root: Path) -> bool:
     source_profile = r"C:\Users\SourceUser"
     attachment = rf"{source_profile}\AppData\Local\Temp\codex-image.png"
     replacements = [
+        (
+            rf"{source_profile}\AppData\Local\Temp\codex-image-{index:04d}.png",
+            f"%ATTACHMENT:codex-image-{index:04d}.png%",
+        )
+        for index in range(700)
+    ] + [
         (attachment, "%ATTACHMENT:codex-image.png%"),
         (source_profile, "%PROFILE%"),
     ]
@@ -1344,6 +1380,10 @@ def _streaming_lineage_digest_test(root: Path) -> bool:
         and sum(small_progress) == small.stat().st_size
         and large_digest == hashlib.sha256(expected_large).hexdigest()
         and sum(large_progress) == large.stat().st_size
+        and all(
+            lineage._replace_paths(original, replacements) == token
+            for original, token in replacements[:-1]
+        )
     )
 
 
@@ -1449,6 +1489,296 @@ def _location_mapper_model_test(root: Path) -> bool:
     )
 
 
+def _path_portability_audit_test(root: Path) -> bool:
+    profile = root / "portability-audit-user"
+    codex = profile / ".codex"
+    project = profile / "Documents" / "AuditProject"
+    codex.mkdir(parents=True)
+    project.mkdir(parents=True)
+    state = {
+        "local-projects": {
+            "audit-project": {"rootPaths": [str(project)]}
+        },
+        "future-machine-location": {
+            "path": r"Z:\FutureMachine\PrivateWorkspace"
+        },
+    }
+    (codex / ".codex-global-state.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    database = sqlite3.connect(codex / "state_5.sqlite")
+    database.executescript(
+        """
+        CREATE TABLE project_roots (
+          project_id TEXT NOT NULL, position INTEGER NOT NULL, path TEXT NOT NULL
+        );
+        CREATE TABLE threads (
+          id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, cwd TEXT NOT NULL,
+          future_workspace_path TEXT
+        );
+        """
+    )
+    database.execute(
+        "INSERT INTO project_roots VALUES(?,?,?)",
+        ("audit-project", 0, str(project)),
+    )
+    database.execute(
+        "INSERT INTO threads VALUES(?,?,?,?)",
+        (
+            "audit-thread",
+            str(codex / "sessions" / "audit.jsonl"),
+            str(project),
+            r"Y:\UnknownDevice\FutureProject",
+        ),
+    )
+    database.commit()
+    database.close()
+    before = _hash_tree(profile)
+    result = portability_audit.audit(profile, codex)
+    after = _hash_tree(profile)
+    serialized = json.dumps(result, ensure_ascii=False)
+    summary = result.get("summary") or {}
+    findings = result.get("findings") or []
+    return bool(
+        before == after
+        and result.get("status") == "attention"
+        and summary.get("translatedReferences", 0) >= 3
+        and summary.get("needsReviewReferences", 0) >= 2
+        and summary.get("unrecognizedSchemaFields", 0) == 2
+        and result.get("privacy", {}).get("containsPathValues") is False
+        and result.get("privacy", {}).get("unknownFieldNamesAreFingerprinted") is True
+        and str(profile).lower() not in serialized.lower()
+        and "FutureMachine".lower() not in serialized.lower()
+        and "UnknownDevice".lower() not in serialized.lower()
+        and all("unrecognized-field-" in item.get("schemaField", "")
+                for item in findings if item.get("reason", "").startswith("unrecognized-"))
+    )
+
+
+def _run_test_git(root: Path, *arguments: str) -> bool:
+    executable = shutil.which("git")
+    if not executable:
+        return False
+    completed = subprocess.run(
+        [executable, "-C", str(root), *arguments],
+        capture_output=True,
+        timeout=10,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return completed.returncode == 0
+
+
+def _git_conflict_insight_test(root: Path) -> tuple[bool, bool]:
+    source = root / "git-insight-source"
+    target = root / "git-insight-target"
+    later_target = root / "git-insight-later-target"
+    dirty_target = root / "git-insight-dirty-target"
+    source.mkdir(parents=True)
+    if not shutil.which("git"):
+        fallback = git_insight.compare_repositories(source, target)
+        return (
+            fallback.get("classification") == "insufficient-evidence",
+            fallback.get("automaticActionChanged") is False,
+        )
+    if not _run_test_git(source, "init"):
+        return False, False
+    for key, value in (("user.email", "lifeboat@example.invalid"), ("user.name", "Lifeboat Test")):
+        if not _run_test_git(source, "config", key, value):
+            return False, False
+    (source / "state.txt").write_text("base\n", encoding="utf-8")
+    if not (_run_test_git(source, "add", "state.txt") and _run_test_git(source, "commit", "-m", "base")):
+        return False, False
+    executable = str(shutil.which("git"))
+    for destination in (target,):
+        completed = subprocess.run(
+            [executable, "clone", "--quiet", str(source), str(destination)],
+            capture_output=True,
+            timeout=15,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if completed.returncode:
+            return False, False
+    (source / "state.txt").write_text("backup ahead\n", encoding="utf-8")
+    if not (_run_test_git(source, "add", "state.txt") and _run_test_git(source, "commit", "-m", "backup ahead")):
+        return False, False
+    backup_ahead = git_insight.compare_repositories(source, target)
+    for destination in (later_target, dirty_target):
+        completed = subprocess.run(
+            [executable, "clone", "--quiet", str(source), str(destination)],
+            capture_output=True,
+            timeout=15,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if completed.returncode:
+            return False, False
+    for repository in (target, later_target, dirty_target):
+        _run_test_git(repository, "config", "user.email", "lifeboat@example.invalid")
+        _run_test_git(repository, "config", "user.name", "Lifeboat Test")
+    (target / "target.txt").write_text("diverged\n", encoding="utf-8")
+    if not (_run_test_git(target, "add", "target.txt") and _run_test_git(target, "commit", "-m", "diverged")):
+        return False, False
+    diverged = git_insight.compare_repositories(source, target)
+    (later_target / "later.txt").write_text("computer ahead\n", encoding="utf-8")
+    if not (_run_test_git(later_target, "add", "later.txt") and _run_test_git(later_target, "commit", "-m", "computer ahead")):
+        return False, False
+    computer_ahead = git_insight.compare_repositories(source, later_target)
+    (dirty_target / "untracked.txt").write_text("local only\n", encoding="utf-8")
+    dirty = git_insight.compare_repositories(source, dirty_target)
+    serialized = json.dumps((backup_ahead, diverged, computer_ahead, dirty))
+    explanations = bool(
+        backup_ahead.get("historyRelation") == "backup-ahead"
+        and diverged.get("historyRelation") == "diverged"
+        and diverged.get("classification") == "true-divergence"
+        and computer_ahead.get("historyRelation") == "computer-ahead"
+        and dirty.get("historyRelation") == "same-commit"
+        and dirty.get("classification") == "same-commit-working-tree-differs"
+        and str(source) not in serialized
+        and str(target) not in serialized
+    )
+    advisory_only = all(
+        item.get("automaticActionChanged") is False
+        for item in (backup_ahead, diverged, computer_ahead, dirty)
+    )
+    return explanations, advisory_only
+
+
+def _atomic_metadata_test(root: Path) -> bool:
+    folder = root / "atomic-metadata"
+    target = folder / "state.json"
+    atomic_io.write_json(target, {"generation": "old"})
+    interrupted = False
+    try:
+        with mock.patch.object(atomic_io.os, "replace", side_effect=OSError("injected interruption")):
+            atomic_io.write_json(target, {"generation": "partial"})
+    except OSError:
+        interrupted = True
+    old_survived = backup.read_json(target) == {"generation": "old"}
+    no_partial = not list(folder.glob(".*.tmp"))
+    atomic_io.write_json(target, {"generation": "new"})
+    writers = folder / "writers"
+    backup.write_json(writers / "manifest.json", {"valid": True})
+    lineage.save_state(writers / "lineage.json", lineage.empty_state())
+    project_identity.save_registry(
+        writers / "projects.json", project_identity.empty_registry()
+    )
+    location_mapper.save_registry(
+        writers / "locations.json", location_mapper.empty_registry()
+    )
+    diagnostics.save_report(writers / "diagnostics.json", {"safe": True})
+    return bool(
+        interrupted
+        and old_survived
+        and no_partial
+        and backup.read_json(target) == {"generation": "new"}
+        and all(backup.read_json(path) is not None for path in writers.glob("*.json"))
+        and not list(folder.rglob(".*.tmp"))
+    )
+
+
+def _conversation_prefix_classifier_test(root: Path) -> tuple[bool, bool]:
+    folder = root / "conversation-prefix-classifier"
+    folder.mkdir(parents=True, exist_ok=True)
+    source = folder / "source.jsonl"
+    target = folder / "target.jsonl"
+    source_profile = r"C:\Users\Source"
+    target_profile = r"C:\Users\Target"
+    records = [
+        {
+            "type": "session_meta",
+            "payload": {"id": "prefix-thread", "cwd": source_profile + r"\Project"},
+        },
+        {"type": "event_msg", "payload": {"message": "unchanged"}},
+        {"type": "event_msg", "payload": {"message": "incoming tail"}},
+    ]
+    source.write_text(
+        "".join(json.dumps(item, separators=(",", ":")) + "\n" for item in records),
+        encoding="utf-8",
+    )
+    target_records = json.loads(json.dumps(records[:2]))
+    target_records[0]["payload"]["cwd"] = target_profile + r"\Project"
+    target.write_text(
+        "".join(
+            json.dumps(item, separators=(",", ":")) + "\n"
+            for item in target_records
+        ),
+        encoding="utf-8",
+    )
+    source_replacements = [(source_profile, "%PROFILE%")]
+    target_replacements = [(target_profile, "%PROFILE%")]
+    metadata = {
+        "title": "Prefix test",
+        "archived": False,
+        "pinned": False,
+        "projectless": True,
+        "projectId": None,
+        "historyMode": "full",
+        "memoryMode": "local",
+    }
+    before = (backup.sha256_file(source), backup.sha256_file(target))
+    safe = conversation_prefix.compare(
+        source,
+        target,
+        source_replacements,
+        target_replacements,
+        metadata,
+        dict(metadata),
+    )
+    after = (backup.sha256_file(source), backup.sha256_file(target))
+    safe_classifier = bool(
+        safe.get("automatic")
+        and safe.get("relation") == "target-prefix"
+        and safe.get("matchedRecords") == 2
+        and safe.get("additionalSourceRecords") == 1
+        and before == after
+    )
+
+    changed = json.loads(json.dumps(target_records))
+    changed[1]["payload"]["message"] = "edited locally"
+    target.write_text(
+        "".join(json.dumps(item, separators=(",", ":")) + "\n" for item in changed),
+        encoding="utf-8",
+    )
+    diverged = conversation_prefix.compare(
+        source,
+        target,
+        source_replacements,
+        target_replacements,
+        metadata,
+        metadata,
+    )
+    metadata_changed = dict(metadata)
+    metadata_changed["archived"] = True
+    metadata_conflict = conversation_prefix.compare(
+        source,
+        target,
+        source_replacements,
+        target_replacements,
+        metadata,
+        metadata_changed,
+    )
+    target.write_text('{"type":"broken"\n', encoding="utf-8")
+    invalid = conversation_prefix.compare(
+        source,
+        target,
+        source_replacements,
+        target_replacements,
+        metadata,
+        metadata,
+    )
+    strict_rejection = bool(
+        not diverged.get("automatic")
+        and diverged.get("relation") == "diverged"
+        and not metadata_conflict.get("automatic")
+        and metadata_conflict.get("relation") == "metadata-conflict"
+        and not invalid.get("automatic")
+        and invalid.get("relation") == "invalid"
+    )
+    return safe_classifier, strict_rejection
+
+
 def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     root = (
         work_root.resolve()
@@ -1488,6 +1818,10 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         and preview_project.get("totalBytes") == 70
         and selection_preview.get("totals", {}).get("fileCount", 0) > 3
         and selection_preview.get("totals", {}).get("totalBytes", 0) > 70
+        and selection_preview.get("portabilityAudit", {}).get("status") == "portable"
+        and selection_preview.get("portabilityAudit", {}).get("privacy", {}).get(
+            "containsPathValues"
+        ) is False
     )
     destination = root / "usb"
     config = root / "backup-config.json"
@@ -1611,7 +1945,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     # A frozen portable build includes its own executable in the backup so the
     # same restore tool travels with the data. That adds one deliberately hashed
     # payload file compared with a source-tree self-test.
-    expected_visual_file_count = 21 if getattr(sys, "frozen", False) else 20
+    expected_visual_file_count = 22 if getattr(sys, "frozen", False) else 21
     visual_backup_summary_complete = bool(
         visual_backup_summary.get("valid")
         and visual_backup_summary.get("metrics", {}).get("chats") == 3
@@ -1650,6 +1984,68 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         and conflict_plan.get("counts", {}).get("conflicting", 0) >= 1
         and conflict_plan.get("counts", {}).get("destination-only", 0) >= 1
         and conflict_plan.get("blockingReasons")
+    )
+    prefix_classifier_safe, prefix_classifier_strict = (
+        _conversation_prefix_classifier_test(root)
+    )
+    prefix_profile = root / "prefix-sync-user"
+    _copy_profile_fixture(source_profile, prefix_profile)
+    prefix_connection = sqlite3.connect(prefix_profile / ".codex" / "state_5.sqlite")
+    try:
+        prefix_rollout_value = prefix_connection.execute(
+            'SELECT "rollout_path" FROM "threads" WHERE "id"=?',
+            (THREAD_ID,),
+        ).fetchone()[0]
+    finally:
+        prefix_connection.close()
+    prefix_rollout = Path(str(prefix_rollout_value).replace("\\\\?\\", ""))
+    prefix_lines = prefix_rollout.read_text(encoding="utf-8-sig").splitlines()
+    if len(prefix_lines) < 2:
+        raise RuntimeError("Prefix synchronization fixture needs at least two records.")
+    prefix_rollout.write_text("\n".join(prefix_lines[:-1]) + "\n", encoding="utf-8")
+    prefix_source_before = _hash_tree(source_profile)
+    prefix_package_before = _hash_tree(package)
+    prefix_plan = restore_plan.build_restore_plan(
+        package, prefix_profile, allow_running_test=True
+    )
+    prefix_item = next(
+        item
+        for item in prefix_plan.get("items", [])
+        if item.get("key") == f"conversation/{THREAD_ID}"
+    )
+    prefix_plan_read_only = bool(
+        prefix_source_before == _hash_tree(source_profile)
+        and prefix_package_before == _hash_tree(package)
+    )
+    prefix_prepared = restore.prepare_restore(
+        package,
+        prefix_profile,
+        allow_running_test=True,
+        comparison_plan=prefix_plan,
+    )
+    restore.restore_backup(
+        package,
+        prefix_profile,
+        Path(prefix_prepared["safetyRoot"]),
+    )
+    prefix_validation = restore.verify_restored(package, prefix_profile)
+    prefix_repeat_plan = restore_plan.build_restore_plan(
+        package, prefix_profile, allow_running_test=True
+    )
+    prefix_sync_automatic = bool(
+        prefix_plan.get("ready")
+        and prefix_item.get("state") == "incoming"
+        and prefix_item.get("proposedAction") == "replace"
+        and prefix_item.get("decision") == "automatic"
+        and prefix_item.get("prefixSync", {}).get("automatic") is True
+        and prefix_item.get("prefixSync", {}).get("additionalSourceRecords") == 1
+        and prefix_plan_read_only
+        and prefix_validation.get("valid")
+        and all(
+            item.get("state") == "identical"
+            for item in prefix_repeat_plan.get("items", [])
+            if item.get("kind") in {"project", "conversation"}
+        )
     )
     planned_target_profile = root / "planned-target-user"
     shutil.copytree(source_profile, planned_target_profile)
@@ -2629,13 +3025,13 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         for current, total, message in progress_events
     )
     validation_progress_complete = any(
-        current == total and message.startswith("Validating backup:")
-        for current, total, message in progress_events
+        total == 0 and "database, manifests and package structure" in message.lower()
+        for _current, total, message in progress_events
     )
     progress_transitions_clear = bool(
         any(total == 0 for _current, total, _message in progress_events)
         and any(
-            total == 0 and "preflight validation" in message.lower()
+            total == 0 and "database, manifests and package structure" in message.lower()
             for _current, total, message in progress_events
         )
         and progress_events[-1] == (1, 1, "Backup complete")
@@ -2667,6 +3063,66 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
             root / "extracted" / "Codex-Lifeboat.exe"
         )
     )
+    diagnostic_source_before = _hash_tree(source_profile)
+    diagnostic_report = diagnostics.build_report(
+        source_profile,
+        source_profile / ".codex",
+        process_probe=lambda: [],
+        installation_probe=lambda: {
+            "detected": True,
+            "version": "26.818.5229.0",
+        },
+        drives_probe=lambda: [],
+    )
+    diagnostic_source_after = _hash_tree(source_profile)
+    diagnostic_text = diagnostics.report_json(diagnostic_report)
+    diagnostic_report_path = root / "diagnostic-report.json"
+    diagnostics.save_report(diagnostic_report_path, diagnostic_report)
+    diagnostic_report_saved = (
+        backup.read_json(diagnostic_report_path) == diagnostic_report
+        and not list(root.glob(".diagnostic-report.json.*.tmp"))
+    )
+    diagnostic_check_ids = {
+        str(item.get("id")) for item in diagnostic_report.get("checks", [])
+    }
+    diagnostic_center_complete = bool(
+        diagnostic_source_before == diagnostic_source_after
+        and diagnostic_report_saved
+        and diagnostic_report.get("privacy", {}).get("anonymized") is True
+        and diagnostic_report.get("privacy", {}).get("containsAbsolutePaths") is False
+        and str(source_profile).lower() not in diagnostic_text.lower()
+        and source_profile.name.lower() not in diagnostic_text.lower()
+        and diagnostic_report.get("inventory", {}).get("conversationCount") == 3
+        and diagnostic_report.get("inventory", {}).get("projectCount") == 1
+        and {
+            "windows",
+            "launch_location",
+            "codex_data",
+            "codex_readable",
+            "database",
+            "portability_audit",
+            "codex_closed",
+            "installation",
+            "removable_storage",
+            "local_space",
+            "recovery_points",
+            "local_state",
+            "atomic_metadata",
+        }.issubset(diagnostic_check_ids)
+    )
+    package_manifest = backup.read_json(package / "manifest" / "package.json")
+    package_portability = backup.read_json(
+        package / "reports" / "portability-audit.json"
+    )
+    package_portability_audit_complete = bool(
+        package_manifest.get("portabilityAudit", {}).get("auditVersion")
+        == portability_audit.AUDIT_VERSION
+        and package_manifest.get("portabilityAudit", {}).get("status") == "portable"
+        and package_portability.get("privacy", {}).get("containsPathValues") is False
+        and package_portability.get("summary", {}).get("needsReviewReferences") == 0
+    )
+    git_conflict_explanation, git_advisory_only = _git_conflict_insight_test(root)
+    atomic_metadata_complete = _atomic_metadata_test(root)
     checks = {
         "packageValid": package_validation["valid"],
         "visualBackupSummaryComplete": visual_backup_summary_complete,
@@ -2682,6 +3138,15 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "unknownStoreVersionDoesNotWarn": unknown_version_does_not_warn,
         "usbDriveClassification": usb_classification,
         "compressedFolderLaunchBlocked": compressed_launch_detection,
+        "diagnosticCenterReadOnlyAndAnonymous": diagnostic_center_complete,
+        "pathPortabilityAudit": _path_portability_audit_test(root),
+        "backupContainsAnonymousPortabilityAudit": package_portability_audit_complete,
+        "gitAwareConflictExplanation": git_conflict_explanation,
+        "gitInsightNeverChangesRestoreAction": git_advisory_only,
+        "atomicMetadataSurvivesInterruptedWrite": atomic_metadata_complete,
+        "strictConversationPrefixClassifier": prefix_classifier_safe,
+        "conversationPrefixRejectsUnsafeCases": prefix_classifier_strict,
+        "prefixOnlyConversationSyncIsAutomaticAndIdempotent": prefix_sync_automatic,
         "portablePathModel": _portable_path_model_test(),
         "longUnicodePathModel": _long_unicode_path_model_test(),
         "lowDiskSpaceRejected": _low_disk_space_test(),
