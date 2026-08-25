@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '3.4.1',
+    [string]$Version = '3.4.2',
     [string]$PythonPath,
     [switch]$SkipTests
 )
@@ -55,7 +55,7 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     }
 }
 
-& $python -c 'import PyInstaller; assert PyInstaller.__version__ == "6.22.2"'
+& $python -c "import PyInstaller; assert PyInstaller.__version__ == '6.22.2'"
 if ($LASTEXITCODE -ne 0) {
     & $python -m pip install --disable-pip-version-check -r (Join-Path $repoRoot 'requirements-build.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Installing build dependencies failed.' }

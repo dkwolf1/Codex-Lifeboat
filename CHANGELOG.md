@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+## 3.4.2 - 2026-08-25
+
+- Replaced the ambiguous path-portability count with local, privacy-conscious
+  details for schema field, path category, current availability, preservation,
+  translation status, and low/medium/high impact.
+- Clarified that unknown path values remain included unchanged and do not block a
+  valid backup or restore; only their link to the previous location may need review.
+- Full paths are hidden by default and can be revealed locally, while copied and
+  saved support reports strip every local-only field and path.
+- **Verify restore** now repeats the path audit and separately reports references
+  that still point to an old source location.
+- Reworked the main window into a clearer professional dashboard with navigation,
+  focused backup and restore actions, status cards, and improved bilingual labels.
+- Fixed the sidebar title being clipped on Windows display scaling.
+
 ## 3.4.1 - 2026-08-24
 
 - Made normal backup creation substantially faster by avoiding an immediate

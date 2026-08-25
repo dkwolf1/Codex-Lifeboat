@@ -1,12 +1,12 @@
-# Test results 3.4.1
+# Test results 3.4.2
 
-Date: August 24, 2026
+Date: August 25, 2026
 Platform: Windows 11 build environment; target compatibility Windows 10/11 x64
 
 ## Automated end-to-end test
 
 The complete 75-check phase-0-through-13.5 source suite was executed successfully.
-The 3.4.1 standalone executable and the executable started from a freshly extracted
+The 3.4.2 standalone executable and the executable started from a freshly extracted
 portable ZIP both passed the same 75-check packaged gate and the 12/12 automated
 Phase 11 matrix.
 

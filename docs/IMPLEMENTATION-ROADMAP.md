@@ -257,6 +257,11 @@ inspected profile, and known synthetic identity values do not occur in the repor
   paths, project names, user identity, or conversation content.
 - Warn and continue when review is needed; never guess a translation or silently
   discard an unrecognized field.
+- Explain findings locally by real schema field, path category, availability,
+  preservation/translation handling, and low/medium/high impact. Hide full paths by
+  default and remove local-only evidence from copied or saved support reports.
+- Re-run the audit during restore verification and report preserved references that
+  still point to an old source location without treating a notice as corruption.
 
 **Gate:** Passed. Synthetic known and future fields are classified correctly, the
 scan is read-only, reports contain no raw paths, the audit is hash-verified inside

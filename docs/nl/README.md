@@ -4,14 +4,14 @@
 
 [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Openbare testrelease:** versie 3.4.1 is een bèta/release candidate. De
+> **Openbare testrelease:** versie 3.4.2 is een bèta/release candidate. De
 > geautomatiseerde bron-, EXE- en ZIP-tests slagen, maar praktijkresultaten van
 > Windows 10 en echte overdrachten tussen meerdere computers worden nog verzameld.
 > Bewaar onvervangbare gegevens ook apart en lees de [testhandleiding](TESTHANDLEIDING.md).
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.1](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.1)
+### [Download Codex Lifeboat 3.4.2](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.2)
 
 Download op de releasepagina uitsluitend dit bestand:
 
@@ -91,6 +91,8 @@ leeg totdat op deze computer een back-up is teruggezet.
   chatinhoud, aanmeldgegevens of omgevingswaarden
 - Een schemabewuste overdraagbaarheidsaudit die vertaalde paden, bewust uitgesloten
   computerstatus, niet-gekoppelde externe paden en nieuwe Codex-velden onderscheidt
+- Een lokaal detailscherm met veldnaam, padsoort, bestaansstatus, verwerking,
+  vertaalstatus en verwachte impact; volledige paden verschijnen alleen op verzoek
 - Git-bewuste uitleg bij projectconflicten voor gelijke commits, voortgang,
   uiteengelopen geschiedenis en lokale wijzigingen, zonder Git te veranderen
 - Duurzame atomische opslag voor manifesten, rapporten, registers, koppelingen,
@@ -112,9 +114,16 @@ Met **Rapport kopiëren** of **Rapport opslaan** deelt u een geanonimiseerd
 JSON-resultaat met een tester of GitHub-issue.
 
 Het projectkeuzescherm toont vóór de back-up ook het resultaat van de padaudit.
-Een let-opmelding blokkeert de back-up niet stil, maar benoemt velden waarvoor een
-toekomstige vertaalregel nodig kan zijn. Iedere back-up bevat een afzonderlijk
-gehasht `reports/portability-audit.json` met alleen aantallen, classificaties,
+**Details bekijken** legt per groep uit wat het lokale veld is, of de locatie nog
+bestaat, of de gegevens worden meegenomen, of het pad wordt vertaald en wat de
+mogelijke impact is. Onbekende verwijzingen worden ongewijzigd bewaard: een
+let-opmelding laat dus geen databasegegevens weg en blokkeert back-up of herstel
+niet. Wel kan een bewaarde koppeling na herstel nog naar de oude locatie wijzen.
+**Herstel controleren** meldt resterende oude bronverwijzingen afzonderlijk.
+
+Echte veldnamen en optioneel volledige paden zijn alleen lokaal zichtbaar. Iedere
+back-up bevat een afzonderlijk gehasht `reports/portability-audit.json`; gekopieerde
+en opgeslagen diagnoserapporten bevatten alleen aantallen, classificaties,
 redencodes en vingerafdrukken van onbekende schemavelden—nooit echte paden,
 projectnamen of gebruikersidentiteit.
 

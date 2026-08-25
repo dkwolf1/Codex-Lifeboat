@@ -12,13 +12,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 try:
-    from . import backup, lineage, location_mapper, path_model, project_identity, recovery, restore_plan, windows
+    from . import backup, lineage, location_mapper, path_model, portability_audit, project_identity, recovery, restore_plan, windows
     from .validate import validate
 except ImportError:
     import backup
     import lineage
     import location_mapper
     import path_model
+    import portability_audit
     import project_identity
     import recovery
     import restore_plan
@@ -26,7 +27,7 @@ except ImportError:
     from validate import validate
 
 
-RESTORE_VERSION = "3.4.1"
+RESTORE_VERSION = "3.4.2"
 PROTECTED_NAMES = {"auth.json", "installation_id", "cap_sid"}
 RUNTIME_NAMES = {
     ".sandbox",
@@ -1484,6 +1485,7 @@ def verify_restored(
         package_root, target_profile
     )
     errors: list[str] = []
+    notices: list[str] = []
     checks: dict[str, Any] = {}
     package = backup.read_json(package_root / "manifest" / "package.json")
     database = target_codex / "state_5.sqlite"
@@ -1657,7 +1659,46 @@ def verify_restored(
                 )
     checks["projects"] = checked_projects
     checks["projectDispositions"] = checked_dispositions
-    return {"valid": not errors, "errors": errors, "checks": checks}
+    try:
+        source_projects = backup.read_json(package_root / "manifest" / "projects.json")
+        portability = portability_audit.audit(
+            target_profile,
+            target_codex,
+            extra_project_roots=list(translator.project_targets.values()),
+            legacy_roots=[translator.source_profile]
+            + [str(item.get("sourcePath") or "") for item in source_projects],
+        )
+        portability_summary = portability.get("summary") or {}
+        remaining = int(portability_summary.get("needsReviewReferences", 0))
+        old_source = int(portability_summary.get("oldSourceReferences", 0))
+        checks["pathPortability"] = {
+            "status": "attention" if remaining else "portable",
+            "needsReviewReferences": remaining,
+            "oldSourceReferences": old_source,
+            "fieldsNeedingReview": int(
+                portability_summary.get("fieldsNeedingReview", 0)
+            ),
+        }
+        if old_source:
+            notices.append(
+                f"{old_source} preserved path reference(s) still point to an old source location."
+            )
+        elif remaining:
+            notices.append(
+                f"{remaining} preserved path reference(s) remain unchanged because no safe translation rule is known."
+            )
+    except Exception as exc:
+        checks["pathPortability"] = {"status": "not-checked"}
+        notices.append(
+            "Post-restore path portability could not be checked: "
+            + type(exc).__name__
+        )
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "notices": notices,
+        "checks": checks,
+    }
 
 
 def restore_backup(

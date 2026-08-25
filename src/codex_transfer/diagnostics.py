@@ -181,14 +181,28 @@ def _anonymize(value: Any, sensitive_values: Iterable[str]) -> Any:
     return value
 
 
+def _shareable(value: Any) -> Any:
+    """Remove GUI-only local evidence before a report leaves this computer."""
+
+    if isinstance(value, dict):
+        return {
+            str(key): _shareable(item)
+            for key, item in value.items()
+            if not str(key).startswith("_local")
+        }
+    if isinstance(value, list):
+        return [_shareable(item) for item in value]
+    return value
+
+
 def report_json(report: dict[str, Any]) -> str:
-    return json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    return json.dumps(_shareable(report), ensure_ascii=False, indent=2) + "\n"
 
 
 def save_report(path: Path, report: dict[str, Any]) -> None:
     """Atomically save a user-requested support report."""
 
-    atomic_io.write_json(path, report)
+    atomic_io.write_json(path, _shareable(report))
 
 
 def build_report(
@@ -209,6 +223,7 @@ def build_report(
     installation_probe = installation_probe or windows.installed_codex_version
     drives_probe = drives_probe or windows.removable_drives
     recovery_probe = recovery_probe or recovery.list_points
+    default_portability_probe = portability_probe is None
     portability_probe = portability_probe or portability_audit.audit
     checks: list[dict[str, Any]] = []
     inventory: dict[str, Any] = {
@@ -346,7 +361,12 @@ def build_report(
             pass
 
     try:
-        portability = portability_probe(profile, codex_home)
+        portability = (
+            portability_probe(profile, codex_home, include_local_details=True)
+            if default_portability_probe
+            else portability_probe(profile, codex_home)
+        )
+        local_portability_findings = portability.pop("_localFindings", [])
         portability_summary = portability.get("summary") or {}
         path_references = int(portability_summary.get("pathReferences", 0))
         translated_references = int(
@@ -362,6 +382,24 @@ def build_report(
         )
         review_fields = int(portability_summary.get("fieldsNeedingReview", 0))
         scan_errors = int(portability_summary.get("scanErrors", 0))
+        review_findings = [
+            item
+            for item in portability.get("findings", [])
+            if item.get("classification") == "needs-review"
+        ]
+        missing_review = sum(
+            int(item.get("occurrences", 0))
+            for item in review_findings
+            if item.get("pathStatus") == "missing"
+        )
+        impact_counts = {
+            impact: sum(
+                int(item.get("occurrences", 0))
+                for item in review_findings
+                if item.get("impact") == impact
+            )
+            for impact in ("low", "medium", "high")
+        }
         inventory.update(
             portablePathReferenceCount=path_references,
             portabilityNeedsReviewCount=needs_review,
@@ -374,7 +412,9 @@ def build_report(
                 "Path portability audit",
                 (
                     f"{covered_references} path reference(s) are covered; "
-                    f"{needs_review} reference(s) across {review_fields} field(s) need review."
+                    f"{needs_review} preserved reference(s) across {review_fields} field(s) need review. "
+                    f"{missing_review} point to paths that are no longer present. "
+                    "Backup and restore can continue; no database data is omitted."
                     if needs_review or scan_errors
                     else f"All {path_references} detected path reference(s) are covered by known translation or exclusion rules."
                 ),
@@ -385,10 +425,16 @@ def build_report(
                 needsReviewReferences=needs_review,
                 unrecognizedSchemaFields=unknown_fields,
                 fieldsNeedingReview=review_fields,
+                missingReviewReferences=missing_review,
+                lowImpactReferences=impact_counts["low"],
+                mediumImpactReferences=impact_counts["medium"],
+                highImpactReferences=impact_counts["high"],
+                reviewDataPreserved=True,
                 scanErrors=scan_errors,
             )
         )
     except Exception as exc:
+        local_portability_findings = []
         portability = {
             "portabilityAuditVersion": portability_audit.AUDIT_VERSION,
             "status": "attention",
@@ -640,4 +686,10 @@ def build_report(
         "portabilityAudit": portability,
         "checks": checks,
     }
-    return _anonymize(report, _sensitive_values(profile, codex_home))
+    safe_report = _anonymize(report, _sensitive_values(profile, codex_home))
+    if local_portability_findings:
+        safe_report["_localPortabilityAudit"] = {
+            "summary": dict(portability.get("summary") or {}),
+            "findings": local_portability_findings,
+        }
+    return safe_report

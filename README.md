@@ -3,20 +3,20 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Public test: 3.4.1](https://img.shields.io/badge/public%20test-v3.4.1-f59e0b)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.1)
+[![Public test: 3.4.2](https://img.shields.io/badge/public%20test-v3.4.2-f59e0b)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.2)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Public testing release:** version 3.4.1 is a beta release candidate. Its
+> **Public testing release:** version 3.4.2 is a beta release candidate. Its
 > automated source, executable, and extracted-ZIP tests pass, but real
 > Windows 10 and multi-computer round trips are still being collected. Keep an
 > independent copy of irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.1 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.1)
+### [Download Codex Lifeboat 3.4.2 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.2)
 
 On the release page, download only:
 
@@ -65,6 +65,9 @@ It includes:
   conversation content, authentication data, and environment values
 - A schema-aware path portability audit that distinguishes translated paths,
   intentionally excluded machine state, unmapped external paths, and new Codex fields
+- A local path-review window that explains the schema field, path category,
+  current availability, backup handling, translation status, and likely impact;
+  full paths remain hidden until the user explicitly reveals them
 - Git-aware project conflict explanations that distinguish matching commits,
   forward progress, divergent history, and uncommitted changes without modifying Git
 - Durable atomic storage for manifests, reports, registries, mappings, settings,
@@ -125,11 +128,17 @@ report** or **Save report** to share an anonymized JSON result with a tester or
 issue report.
 
 The project-selection screen also shows the path portability result before the
-backup starts. An attention result does not silently block the backup: it identifies
-path-bearing fields that need a future translation rule. Every backup stores a
-separately hashed `reports/portability-audit.json`. It contains only counts,
-classifications, reason codes, and fingerprints for unknown schema fields—never
-raw paths, project names, or user identity.
+backup starts. **View details** explains what every group represents, whether the
+referenced location still exists, whether its data is included, whether it will be
+translated, and the likely impact. Unknown references are preserved unchanged: an
+attention result does not omit database data and does not block backup or restore.
+It means that a preserved link may still point to its previous location. **Verify
+restore** reports remaining old-source references separately.
+
+Real schema field names and optional full paths are shown locally only. Every backup
+stores a separately hashed `reports/portability-audit.json`, and copied or saved
+diagnostic reports contain only counts, classifications, reason codes, and
+fingerprints for unknown schema fields—never raw paths, project names, or user identity.
 
 ## Important security note
 

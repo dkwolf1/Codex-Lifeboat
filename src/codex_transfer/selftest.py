@@ -752,6 +752,7 @@ def _gui_smoke_test() -> bool:
         BackupResultDialog,
         BackupSelectionDialog,
         DiagnosticsDialog,
+        PathPortabilityDialog,
         RecoveryDialog,
         RestorePlanDialog,
         TransferApp,
@@ -764,28 +765,30 @@ def _gui_smoke_test() -> bool:
         app.language.set("nl")
         app._translate()
         dutch = bool(
-            app.backup_button.cget("text") == "1. Volledige back-up maken"
+            app.backup_button.cget("text") == "Back-up maken"
+            and app.overview_title.cget("text") == "Overzicht"
             and app.t("map_external_title") == "Projectlocatie kiezen"
             and "veilig" in app.t("map_external_invalid", errors="test")
             and app.t("plan_restore") == "Plan goedkeuren en doorgaan"
             and app.t("keep_both") == "Beide bewaren"
             and app.t("archive") == "Project archiveren"
             and app.t("delete") == "Project verwijderen"
-            and app.t("recovery") == "5. Herstelpunten beheren"
-            and app.t("diagnostics") == "6. Systeemcontrole en diagnose"
+            and app.t("recovery") == "Herstelpunten"
+            and app.t("diagnostics") == "Diagnose"
         )
         app.language.set("en")
         app._translate()
         english = bool(
-            app.backup_button.cget("text") == "1. Create complete backup"
+            app.backup_button.cget("text") == "Create backup"
+            and app.overview_title.cget("text") == "Overview"
             and app.t("map_external_title") == "Choose project location"
             and "safely" in app.t("map_external_invalid", errors="test")
             and app.t("plan_restore") == "Approve plan and continue"
             and app.t("keep_both") == "Keep both"
             and app.t("archive") == "Archive project"
             and app.t("delete") == "Delete project"
-            and app.t("recovery") == "5. Manage recovery points"
-            and app.t("diagnostics") == "6. System check and diagnostics"
+            and app.t("recovery") == "Recovery points"
+            and app.t("diagnostics") == "Diagnostics"
         )
         blocked_dialog = RestorePlanDialog(
             app,
@@ -951,6 +954,42 @@ def _gui_smoke_test() -> bool:
             and selection_dialog.excluded_paths == ["C:/Projects/DemoProject"]
         )
         selection_dialog.destroy()
+        portability_dialog = PathPortabilityDialog(
+            app,
+            {
+                "summary": {
+                    "translatedReferences": 3,
+                    "excludedMachineStateReferences": 1,
+                    "needsReviewReferences": 2,
+                },
+                "_localFindings": [{
+                    "source": "sqlite",
+                    "schemaField": "threads.future_workspace_path",
+                    "classification": "needs-review",
+                    "pathKind": "old-source-location",
+                    "pathStatus": "missing",
+                    "reason": "unrecognized-database-field",
+                    "occurrences": 2,
+                    "impact": "high",
+                    "backupHandling": "preserved-unchanged",
+                    "translationPlanned": False,
+                    "dataIncluded": True,
+                    "localPaths": [r"C:\Users\Source\OldProject"],
+                }],
+            },
+        )
+        app.update_idletasks()
+        portability_dialog_created = bool(
+            portability_dialog.winfo_exists() == 1
+            and len(portability_dialog.tree.get_children()) == 1
+            and "threads.future_workspace_path"
+            in portability_dialog.detail_label.cget("text")
+            and "%OLD_COMPUTER_PATH%" in portability_dialog.detail_label.cget("text")
+        )
+        portability_dialog.show_paths.set(True)
+        portability_dialog._show_details()
+        portability_local_toggle = "Source" in portability_dialog.detail_label.cget("text")
+        portability_dialog.destroy()
         recovery_dialog = RecoveryDialog(
             app,
             {
@@ -988,13 +1027,14 @@ def _gui_smoke_test() -> bool:
         )
         diagnostics_dialog.destroy()
         return bool(
-            dutch and english and len(app.action_buttons) == 6
+            dutch and english and len(app.action_buttons) == 8
             and blocked_is_disabled and ready_is_enabled
             and decision_button_enabled and decision_resolved
             and archive_button_enabled and project_decision_resolved
             and result_dialog_created and recovery_dialog_created
             and diagnostics_dialog_created
             and selection_default_complete and selection_exclusion_visible
+            and portability_dialog_created and portability_local_toggle
         )
     finally:
         app.destroy()
@@ -1495,12 +1535,16 @@ def _path_portability_audit_test(root: Path) -> bool:
     project = profile / "Documents" / "AuditProject"
     codex.mkdir(parents=True)
     project.mkdir(parents=True)
+    extended_project = "\\\\?\\" + str(project)
     state = {
         "local-projects": {
             "audit-project": {"rootPaths": [str(project)]}
         },
         "future-machine-location": {
             "path": r"Z:\FutureMachine\PrivateWorkspace"
+        },
+        "electron-persisted-atom-state": {
+            "history": "https://github.com/example/repository and D:\\, ordinary prose"
         },
     }
     (codex / ".codex-global-state.json").write_text(
@@ -1520,7 +1564,7 @@ def _path_portability_audit_test(root: Path) -> bool:
     )
     database.execute(
         "INSERT INTO project_roots VALUES(?,?,?)",
-        ("audit-project", 0, str(project)),
+        ("audit-project", 0, extended_project),
     )
     database.execute(
         "INSERT INTO threads VALUES(?,?,?,?)",
@@ -1535,6 +1579,12 @@ def _path_portability_audit_test(root: Path) -> bool:
     database.close()
     before = _hash_tree(profile)
     result = portability_audit.audit(profile, codex)
+    local_result = portability_audit.audit(
+        profile, codex, include_local_details=True
+    )
+    restored_result = portability_audit.audit(
+        profile, codex, legacy_roots=[r"Y:\UnknownDevice"]
+    )
     after = _hash_tree(profile)
     serialized = json.dumps(result, ensure_ascii=False)
     summary = result.get("summary") or {}
@@ -1550,8 +1600,32 @@ def _path_portability_audit_test(root: Path) -> bool:
         and str(profile).lower() not in serialized.lower()
         and "FutureMachine".lower() not in serialized.lower()
         and "UnknownDevice".lower() not in serialized.lower()
+        and "electron-persisted-atom-state" not in serialized
         and all("unrecognized-field-" in item.get("schemaField", "")
                 for item in findings if item.get("reason", "").startswith("unrecognized-"))
+        and any(
+            item.get("schemaField") == "threads.future_workspace_path"
+            and item.get("backupHandling") == "preserved-unchanged"
+            and item.get("dataIncluded") is True
+            and item.get("localPaths")
+            for item in local_result.get("_localFindings", [])
+        )
+        and "_localFindings" not in result
+        and any(
+            item.get("schemaField") == "project_roots.path"
+            and item.get("pathStatus") == "present"
+            and any(
+                str(path).startswith("\\\\?\\")
+                for path in item.get("localPaths", [])
+            )
+            for item in local_result.get("_localFindings", [])
+        )
+        and restored_result.get("summary", {}).get("oldSourceReferences", 0) >= 1
+        and any(
+            item.get("pathKind") == "old-source-location"
+            and item.get("impact") == "high"
+            for item in restored_result.get("findings", [])
+        )
     )
 
 
@@ -3079,8 +3153,10 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     diagnostic_report_path = root / "diagnostic-report.json"
     diagnostics.save_report(diagnostic_report_path, diagnostic_report)
     diagnostic_report_saved = (
-        backup.read_json(diagnostic_report_path) == diagnostic_report
+        backup.read_json(diagnostic_report_path)
+        == json.loads(diagnostics.report_json(diagnostic_report))
         and not list(root.glob(".diagnostic-report.json.*.tmp"))
+        and "_localPortabilityAudit" not in backup.read_json(diagnostic_report_path)
     )
     diagnostic_check_ids = {
         str(item.get("id")) for item in diagnostic_report.get("checks", [])

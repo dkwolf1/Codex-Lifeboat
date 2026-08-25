@@ -13,9 +13,10 @@ from typing import Any, Iterable
 from . import backup
 
 
-AUDIT_VERSION = 1
+AUDIT_VERSION = 2
 WINDOWS_PATH = re.compile(
-    r"(?i)(?:\\\\\?\\)?[a-z]:[\\/][^\x00\r\n\"<>|?*]{1,2048}"
+    r"(?i)(?<![a-z0-9_+.-])(?:\\\\\?\\)?[a-z]:[\\/](?![\\/])"
+    r"(?:[^\x00\r\n\"<>|?*\s,;:.)\]}][^\x00\r\n\"<>|?*]{0,2047})?"
 )
 UNC_PATH = re.compile(r"\\\\[^\\\s\"']+\\[^\x00\r\n\"<>|?*]{1,2048}")
 PATHISH_COLUMN = re.compile(
@@ -88,8 +89,17 @@ def _structured_strings(value: Any) -> Iterable[str]:
     return [value]
 
 
+def _without_extended_prefix(value: str | Path) -> str:
+    text = str(value).replace("/", "\\")
+    if text.lower().startswith("\\\\?\\unc\\"):
+        return "\\\\" + text[8:]
+    if text.startswith("\\\\?\\"):
+        return text[4:]
+    return text
+
+
 def _normalized(value: str | Path) -> str:
-    return ntpath.normcase(ntpath.normpath(str(value).replace("/", "\\")))
+    return ntpath.normcase(ntpath.normpath(_without_extended_prefix(value)))
 
 
 def _under(candidate: str, root: str) -> bool:
@@ -103,6 +113,22 @@ def _field_token(source: str, field: str, known: bool) -> str:
         return field
     fingerprint = hashlib.sha256(f"{source}:{field}".encode("utf-8")).hexdigest()[:10]
     return f"{source}.unrecognized-field-{fingerprint}"
+
+
+def _impact(classification: str, path_kind: str, path_status: str) -> str:
+    if classification == "needs-review" and path_kind == "old-source-location":
+        return "high"
+    if classification in {"translated", "excluded"} or path_status == "missing":
+        return "low"
+    return "medium"
+
+
+def _handling(classification: str) -> str:
+    if classification == "excluded":
+        return "excluded-machine-state"
+    if classification == "translated":
+        return "preserved-and-translated"
+    return "preserved-unchanged"
 
 
 def _database_schema(connection) -> dict[str, list[dict[str, Any]]]:
@@ -167,8 +193,15 @@ def audit(
     codex_home: Path,
     *,
     extra_project_roots: Iterable[str | Path] = (),
+    legacy_roots: Iterable[str | Path] = (),
+    include_local_details: bool = False,
 ) -> dict[str, Any]:
-    """Find path-bearing Codex fields and report only anonymous schema evidence."""
+    """Find path-bearing Codex fields.
+
+    The normal result remains safe to store or share. ``include_local_details``
+    adds an in-memory-only view with real schema field names and a few local
+    paths for the GUI. Callers must never persist that local view.
+    """
 
     profile = profile.resolve(strict=False)
     codex_home = codex_home.resolve(strict=False)
@@ -231,14 +264,42 @@ def audit(
         key=len,
         reverse=True,
     )
+    normalized_legacy_roots = sorted(
+        {
+            _normalized(value)
+            for value in legacy_roots
+            if _paths(str(value)) and not _under(str(value), str(profile))
+        },
+        key=len,
+        reverse=True,
+    )
 
-    grouped: dict[tuple[str, str, str, str], int] = defaultdict(int)
+    grouped: dict[tuple[str, str, str, str, str], int] = defaultdict(int)
+    local_grouped: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
+    availability_cache: dict[str, str] = {}
+
+    def availability(path: str) -> str:
+        normalized = _normalized(path)
+        if normalized in availability_cache:
+            return availability_cache[normalized]
+        filesystem_path = _without_extended_prefix(path)
+        if filesystem_path.startswith("\\\\"):
+            value = "not-checked"
+        else:
+            try:
+                value = "present" if Path(filesystem_path).exists() else "missing"
+            except OSError:
+                value = "not-checked"
+        availability_cache[normalized] = value
+        return value
 
     def add(source: str, field: str, known: bool, path: str, known_strategy: str) -> None:
         if _under(path, str(profile)):
             path_kind = "profile-relative"
         elif any(_under(path, root) for root in normalized_roots):
             path_kind = "project-relative"
+        elif any(_under(path, root) for root in normalized_legacy_roots):
+            path_kind = "old-source-location"
         else:
             path_kind = "external-or-unknown"
 
@@ -268,7 +329,21 @@ def audit(
             classification = "needs-review"
             reason = "unrecognized-global-state-field"
         token = _field_token(source, field, known)
-        grouped[(source, token, classification, path_kind + ":" + reason)] += 1
+        path_status = availability(path)
+        key = (source, token, classification, path_kind + ":" + reason, path_status)
+        grouped[key] += 1
+        if include_local_details:
+            local_key = (source, field, classification, path_kind + ":" + reason, path_status)
+            local = local_grouped.setdefault(
+                local_key,
+                {"paths": [], "seen": set(), "occurrences": 0},
+            )
+            local["occurrences"] += 1
+            normalized_path = _normalized(path)
+            if normalized_path not in local["seen"]:
+                local["seen"].add(normalized_path)
+                if len(local["paths"]) < 5:
+                    local["paths"].append(path)
 
     for field, known, values in database_values:
         strategy = KNOWN_DATABASE_FIELDS.get(field, "unrecognized")
@@ -278,6 +353,11 @@ def audit(
     for top_level_key, value in state.items():
         portable = top_level_key in backup.PORTABLE_STATE_KEYS
         excluded = top_level_key in KNOWN_EXCLUDED_GLOBAL_KEYS
+        # These stores are excluded as a whole and can contain arbitrary UI or
+        # conversation text. Scanning that text creates URL/prose false positives
+        # without changing any backup or restore decision.
+        if excluded:
+            continue
         known = portable or excluded
         strategy = (
             "portable-state-translation"
@@ -291,18 +371,48 @@ def audit(
                 add("global-state", str(top_level_key), known, path, strategy)
 
     findings: list[dict[str, Any]] = []
-    for (source, field, classification, combined), occurrences in sorted(grouped.items()):
+    for (source, field, classification, combined, path_status), occurrences in sorted(grouped.items()):
         path_kind, reason = combined.split(":", 1)
+        impact = _impact(classification, path_kind, path_status)
+        handling = _handling(classification)
         findings.append(
             {
                 "source": source,
                 "schemaField": field,
                 "classification": classification,
                 "pathKind": path_kind,
+                "pathStatus": path_status,
                 "reason": reason,
                 "occurrences": occurrences,
+                "impact": impact,
+                "backupHandling": handling,
+                "translationPlanned": classification == "translated",
+                "dataIncluded": classification != "excluded",
             }
         )
+    local_findings: list[dict[str, Any]] = []
+    if include_local_details:
+        for (source, field, classification, combined, path_status), details in sorted(
+            local_grouped.items()
+        ):
+            path_kind, reason = combined.split(":", 1)
+            impact = _impact(classification, path_kind, path_status)
+            local_findings.append(
+                {
+                    "source": source,
+                    "schemaField": field,
+                    "classification": classification,
+                    "pathKind": path_kind,
+                    "pathStatus": path_status,
+                    "reason": reason,
+                    "occurrences": int(details["occurrences"]),
+                    "impact": impact,
+                    "backupHandling": _handling(classification),
+                    "translationPlanned": classification == "translated",
+                    "dataIncluded": classification != "excluded",
+                    "localPaths": list(details["paths"]),
+                }
+            )
     translated = sum(
         item["occurrences"] for item in findings if item["classification"] == "translated"
     )
@@ -336,8 +446,14 @@ def audit(
         for item in findings
         if item["reason"].startswith("unrecognized-")
     )
+    old_source_references = sum(
+        item["occurrences"]
+        for item in findings
+        if item["classification"] == "needs-review"
+        and item["pathKind"] == "old-source-location"
+    )
     scan_errors = int(not database_readable) + int(not state_readable)
-    return {
+    result = {
         "portabilityAuditVersion": AUDIT_VERSION,
         "status": "attention" if needs_review or scan_errors else "portable",
         "summary": {
@@ -349,6 +465,7 @@ def audit(
             "unrecognizedSchemaFields": unknown_fields,
             "unrecognizedFieldReferences": unrecognized_references,
             "unmappedExternalReferences": unmapped_external,
+            "oldSourceReferences": old_source_references,
             "scanErrors": scan_errors,
         },
         "coverage": {
@@ -363,3 +480,6 @@ def audit(
             "unknownFieldNamesAreFingerprinted": True,
         },
     }
+    if include_local_details:
+        result["_localFindings"] = local_findings
+    return result

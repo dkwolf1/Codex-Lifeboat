@@ -252,6 +252,11 @@ profiel niet en bekende synthetische identiteitswaarden komen niet in het rappor
   nooit paden, projectnamen, gebruikersidentiteit of chatinhoud.
 - Bij benodigde controle waarschuwen en doorgaan; nooit een vertaling gokken of een
   onbekend veld stil verwijderen.
+- Bevindingen lokaal uitleggen met echte schemaveldnaam, padsoort, bestaansstatus,
+  bewaar-/vertaalgedrag en lage, middelhoge of hoge impact. Volledige paden standaard
+  verbergen en lokale details uit gekopieerde of opgeslagen supportrapporten verwijderen.
+- De audit tijdens de herstelcontrole opnieuw uitvoeren en bewaarde verwijzingen naar
+  een oude bronlocatie apart melden zonder een waarschuwing als corruptie te behandelen.
 
 **Poort:** Geslaagd. Synthetische bekende en toekomstige velden worden correct
 geclassificeerd, de scan is alleen-lezen, rapporten bevatten geen echte paden, de

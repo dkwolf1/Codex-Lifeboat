@@ -28,7 +28,7 @@ from . import atomic_io, lineage, path_model, project_identity, windows
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.1"
+GENERATOR_VERSION = "3.4.2"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -548,6 +548,7 @@ def build_backup_preview(
         profile,
         codex_home,
         extra_project_roots=[str(item["sourcePath"]) for item in candidates],
+        include_local_details=True,
     )
 
     projects: list[dict[str, Any]] = []

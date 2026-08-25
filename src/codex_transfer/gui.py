@@ -22,10 +22,20 @@ TEXT = {
         "computer": "Deze computer",
         "codex_home": "Gevonden Codex-map",
         "usb": "Gevonden USB-schijven",
-        "backup": "1. Volledige back-up maken",
-        "verify_backup": "2. Back-up controleren",
-        "restore": "3. Volledige back-up terugzetten",
-        "verify_restore": "4. Herstel controleren",
+        "backup": "Back-up maken",
+        "verify_backup": "Back-up controleren",
+        "restore": "Back-up terugzetten",
+        "verify_restore": "Herstel controleren",
+        "overview": "Overzicht",
+        "overview_subtitle": "Uw Codex-gegevens zijn klaar om veilig mee te nemen",
+        "nav_backup": "Back-up",
+        "nav_restore": "Herstellen",
+        "backup_description": "Bewaar uw projecten, chats en instellingen",
+        "restore_description": "Ga op deze computer verder vanuit een back-up",
+        "latest_backup": "Laatste back-up",
+        "included": "Inbegrepen",
+        "storage": "Opslag",
+        "no_backup_yet": "Nog geen back-up in deze sessie",
         "activity": "Activiteit",
         "last_result": "Laatste resultaat",
         "result_backup_title": "Back-up gereed",
@@ -59,7 +69,37 @@ TEXT = {
         "selection_details": "Selecteer een regel om de grootste onderliggende mappen te bekijken.",
         "selection_exclusion_notice": "Uitgesloten projecten: {count}. De bijbehorende chatgeschiedenis blijft aanwezig, maar de projectbestanden kunnen niet vanuit deze back-up worden hersteld.",
         "selection_portability_ready": "✓ Overdraagbaarheidscontrole: alle {count} gevonden padverwijzingen vallen onder bekende vertaal- of uitsluitingsregels.",
-        "selection_portability_attention": "● Overdraagbaarheidscontrole: {count} padverwijzingen in {fields} veld(en) vragen aandacht. De back-up kan doorgaan en bewaart een geanonimiseerd auditrapport.",
+        "selection_portability_attention": "● {count} padverwijzingen in {fields} veld(en) vragen aandacht. De gegevens worden wel meegenomen en de back-up en het herstel kunnen doorgaan.",
+        "portability_details": "Details bekijken",
+        "portability_title": "Details padverwijzingen",
+        "portability_intro": "Onbekende verwijzingen worden ongewijzigd bewaard. U mist daardoor geen databasegegevens, maar een oude koppeling kan na herstel nog naar de vorige locatie wijzen.",
+        "portability_covered": "Afgedekt",
+        "portability_review": "Te controleren",
+        "portability_field": "Lokaal veld",
+        "portability_kind": "Soort pad",
+        "portability_references": "Verwijzingen",
+        "portability_exists": "Bestaat nu",
+        "portability_handling": "Bij back-up/herstel",
+        "portability_impact": "Impact",
+        "portability_show_paths": "Lokale paden tonen (privé)",
+        "portability_privacy": "Volledige paden blijven alleen in dit venster. Opgeslagen en gekopieerde rapporten blijven geanonimiseerd.",
+        "portability_no_details": "Er zijn geen lokale details beschikbaar. Voer de controle opnieuw uit om details te verzamelen.",
+        "portability_low": "Laag",
+        "portability_medium": "Mogelijk merkbaar",
+        "portability_high": "Belangrijk",
+        "portability_present": "Ja",
+        "portability_missing": "Nee / historisch",
+        "portability_not_checked": "Niet gecontroleerd",
+        "portability_profile_relative": "Gebruikersmap",
+        "portability_project_relative": "Projectmap",
+        "portability_external_or_unknown": "Extern of onbekend",
+        "portability_old_source_location": "Oude bronlocatie",
+        "portability_preserved_and_translated": "Meegenomen en vertaald",
+        "portability_preserved_unchanged": "Meegenomen, niet vertaald",
+        "portability_excluded_machine_state": "Computerspecifiek; uitgesloten",
+        "portability_detail_text": "Veld: {field}\nBron: {source}\nAantal: {count}\nGegevens meegenomen: {included}\nAutomatisch vertaald: {translated}\nImpact: {impact}\n\nVoorbeelden:\n{paths}",
+        "yes": "Ja",
+        "no": "Nee",
         "details": "Wat is beschermd",
         "chat_details": "{active} actief · {archived} gearchiveerd · {pinned} vastgemaakt · {projectless} projectloos",
         "attachment_details": "Bijlagen: {copied} aanwezig · {missing} historisch niet meer beschikbaar",
@@ -79,7 +119,7 @@ TEXT = {
         "full_report": "Volledig rapport: {path}",
         "result_location": "Back-uplocatie: {path}",
         "close": "Sluiten",
-        "recovery": "5. Herstelpunten beheren",
+        "recovery": "Herstelpunten",
         "recovery_title": "Herstelpunten",
         "recovery_intro": "Codex Lifeboat bewaart standaard de twee nieuwste geldige herstelpunten. USB-back-ups worden nooit verwijderd.",
         "recovery_valid": "Geldig",
@@ -96,7 +136,7 @@ TEXT = {
         "recovery_empty_help": "Een herstelpunt wordt automatisch gemaakt vlak voordat u op deze computer een back-up terugzet.",
         "recovery_confirm": "Alleen oudere, volledig gecontroleerde herstelpunten worden verwijderd. De twee nieuwste geldige punten, ongeldige/onvolledige punten, zichtbare projectarchieven en USB-back-ups blijven bewaard. Doorgaan?",
         "recovery_cleaned": "Opschoning voltooid.\n\nVerwijderde herstelpunten: {points}\nVrijgemaakt: {size}\nGeldige herstelpunten bewaard: {retained}",
-        "diagnostics": "6. Systeemcontrole en diagnose",
+        "diagnostics": "Diagnose",
         "diagnostics_title": "Diagnosecentrum",
         "diagnostics_intro": "Controleert deze computer zonder bestanden of instellingen te wijzigen.",
         "diagnostics_ready": "Klaar voor gebruik",
@@ -148,6 +188,7 @@ TEXT = {
         "restore_done": "Herstel en eindcontrole zijn geslaagd.\n\nVeiligheidskopie:\n{safety}",
         "restore_done_retention": "Herstel en eindcontrole zijn geslaagd.\n\nHerstelpunt:\n{safety}\n\nGeldige herstelpunten bewaard: {retained}\nTotale herstelopslag: {size}",
         "valid_restore": "Het herstel is geldig.\n\nThreads: {threads}\nProjecten: {projects}",
+        "valid_restore_notice": "Het herstel is geldig.\n\nThreads: {threads}\nProjecten: {projects}\n\nPadcontrole: {paths} verwijzing(en) vragen nog aandacht; {old} verwijzing(en) wijzen nog naar een oude bronlocatie. Er ontbreken hierdoor geen databasegegevens.",
         "error": "Fout",
         "warning": "Waarschuwing",
         "version_warning": "Versiecontrole: {message}\n\nGeïnstalleerde versie: {installed}\nNieuwste online versie: {latest}\n\nWilt u toch doorgaan?",
@@ -206,10 +247,20 @@ TEXT = {
         "computer": "This computer",
         "codex_home": "Detected Codex folder",
         "usb": "Detected USB drives",
-        "backup": "1. Create complete backup",
-        "verify_backup": "2. Verify backup",
-        "restore": "3. Restore complete backup",
-        "verify_restore": "4. Verify restore",
+        "backup": "Create backup",
+        "verify_backup": "Verify backup",
+        "restore": "Restore backup",
+        "verify_restore": "Verify restore",
+        "overview": "Overview",
+        "overview_subtitle": "Your Codex data is ready to travel safely",
+        "nav_backup": "Backup",
+        "nav_restore": "Restore",
+        "backup_description": "Protect your projects, chats, and settings",
+        "restore_description": "Continue on this computer from a backup",
+        "latest_backup": "Latest backup",
+        "included": "Included",
+        "storage": "Storage",
+        "no_backup_yet": "No backup created in this session",
         "activity": "Activity",
         "last_result": "Latest result",
         "result_backup_title": "Backup ready",
@@ -243,7 +294,37 @@ TEXT = {
         "selection_details": "Select a row to inspect its largest child folders.",
         "selection_exclusion_notice": "Excluded projects: {count}. Their conversation history remains available, but their project files cannot be restored from this backup.",
         "selection_portability_ready": "✓ Portability audit: all {count} detected path references are covered by known translation or exclusion rules.",
-        "selection_portability_attention": "● Portability audit: {count} path references across {fields} field(s) need attention. Backup can continue and stores an anonymized audit report.",
+        "selection_portability_attention": "● {count} path references across {fields} field(s) need attention. The data is included and backup and restore can continue.",
+        "portability_details": "View details",
+        "portability_title": "Path reference details",
+        "portability_intro": "Unknown references are preserved unchanged. No database data is omitted, but an old link may still point to its previous location after restore.",
+        "portability_covered": "Covered",
+        "portability_review": "Needs review",
+        "portability_field": "Local field",
+        "portability_kind": "Path type",
+        "portability_references": "References",
+        "portability_exists": "Exists now",
+        "portability_handling": "Backup/restore handling",
+        "portability_impact": "Impact",
+        "portability_show_paths": "Show local paths (private)",
+        "portability_privacy": "Full paths stay in this window only. Saved and copied reports remain anonymized.",
+        "portability_no_details": "No local details are available. Run the check again to collect details.",
+        "portability_low": "Low",
+        "portability_medium": "Potentially noticeable",
+        "portability_high": "Important",
+        "portability_present": "Yes",
+        "portability_missing": "No / historical",
+        "portability_not_checked": "Not checked",
+        "portability_profile_relative": "User profile",
+        "portability_project_relative": "Project folder",
+        "portability_external_or_unknown": "External or unknown",
+        "portability_old_source_location": "Old source location",
+        "portability_preserved_and_translated": "Included and translated",
+        "portability_preserved_unchanged": "Included, not translated",
+        "portability_excluded_machine_state": "Machine-specific; excluded",
+        "portability_detail_text": "Field: {field}\nSource: {source}\nCount: {count}\nData included: {included}\nAutomatically translated: {translated}\nImpact: {impact}\n\nExamples:\n{paths}",
+        "yes": "Yes",
+        "no": "No",
         "details": "What is protected",
         "chat_details": "{active} active · {archived} archived · {pinned} pinned · {projectless} projectless",
         "attachment_details": "Attachments: {copied} available · {missing} historical files no longer available",
@@ -263,7 +344,7 @@ TEXT = {
         "full_report": "Full report: {path}",
         "result_location": "Backup location: {path}",
         "close": "Close",
-        "recovery": "5. Manage recovery points",
+        "recovery": "Recovery points",
         "recovery_title": "Recovery points",
         "recovery_intro": "Codex Lifeboat keeps the two newest valid recovery points by default. USB backups are never deleted.",
         "recovery_valid": "Valid",
@@ -280,7 +361,7 @@ TEXT = {
         "recovery_empty_help": "A recovery point is created automatically just before a backup is restored on this computer.",
         "recovery_confirm": "Only older, fully verified recovery points will be removed. The two newest valid points, invalid/incomplete points, visible project archives, and USB backups remain untouched. Continue?",
         "recovery_cleaned": "Cleanup complete.\n\nRecovery points removed: {points}\nSpace freed: {size}\nValid recovery points retained: {retained}",
-        "diagnostics": "6. System check and diagnostics",
+        "diagnostics": "Diagnostics",
         "diagnostics_title": "Diagnostics center",
         "diagnostics_intro": "Checks this computer without changing files or settings.",
         "diagnostics_ready": "Ready for use",
@@ -332,6 +413,7 @@ TEXT = {
         "restore_done": "Restore and final verification succeeded.\n\nSafety copy:\n{safety}",
         "restore_done_retention": "Restore and final verification succeeded.\n\nRecovery point:\n{safety}\n\nValid recovery points retained: {retained}\nTotal recovery storage: {size}",
         "valid_restore": "The restore is valid.\n\nThreads: {threads}\nProjects: {projects}",
+        "valid_restore_notice": "The restore is valid.\n\nThreads: {threads}\nProjects: {projects}\n\nPath check: {paths} reference(s) still need attention; {old} reference(s) still point to an old source location. No database data is omitted by this.",
         "error": "Error",
         "warning": "Warning",
         "version_warning": "Version check: {message}\n\nInstalled version: {installed}\nLatest online version: {latest}\n\nContinue anyway?",
@@ -1147,8 +1229,13 @@ class BackupSelectionDialog(tk.Toplevel):
             )
             portability_color = "#0B6B47"
             portability_background = "#EAF7F1"
+        portability_bar = tk.Frame(metrics, bg=portability_background)
+        portability_bar.grid(
+            row=1, column=0, columnspan=4, sticky="ew", pady=(10, 0)
+        )
+        portability_bar.columnconfigure(0, weight=1)
         tk.Label(
-            metrics,
+            portability_bar,
             text=portability_text,
             bg=portability_background,
             fg=portability_color,
@@ -1158,7 +1245,13 @@ class BackupSelectionDialog(tk.Toplevel):
             padx=13,
             pady=9,
             wraplength=1080,
-        ).grid(row=1, column=0, columnspan=4, sticky="ew", pady=(10, 0))
+        ).grid(row=0, column=0, sticky="ew")
+        ttk.Button(
+            portability_bar,
+            text=self.parent_app.t("portability_details"),
+            command=lambda: PathPortabilityDialog(self, portability),
+            style="Secondary.TButton",
+        ).grid(row=0, column=1, padx=(8, 12), pady=5)
 
         table_frame = tk.Frame(
             self, bg=self.parent_app.CARD,
@@ -1382,6 +1475,208 @@ class BackupSelectionDialog(tk.Toplevel):
         self.destroy()
 
 
+class PathPortabilityDialog(tk.Toplevel):
+    """Explain path audit findings without leaking them into support reports."""
+
+    def __init__(self, parent: tk.Misc, audit: dict) -> None:
+        super().__init__(parent)
+        self.parent_app = getattr(parent, "parent_app", parent)
+        self.audit = audit
+        self.findings = list(
+            audit.get("_localFindings")
+            or (audit.get("_localPortabilityAudit") or {}).get("findings")
+            or audit.get("findings")
+            or []
+        )
+        self.item_by_iid: dict[str, dict] = {}
+        self.show_paths = tk.BooleanVar(value=False)
+        self.title(self.parent_app.t("portability_title"))
+        screen_width = max(self.winfo_screenwidth(), 1100)
+        screen_height = max(self.winfo_screenheight(), 720)
+        width = min(1320, max(1040, int(screen_width * 0.78)))
+        height = min(860, max(680, int(screen_height * 0.78)))
+        self.geometry(f"{width}x{height}")
+        self.minsize(940, 620)
+        self.configure(bg=self.parent_app.BG)
+        self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self._build()
+        self.grab_set()
+
+    def _label(self, prefix: str, value: str) -> str:
+        middle = f"{prefix}_" if prefix else ""
+        key = f"portability_{middle}{value.replace('-', '_')}"
+        return self.parent_app.t(key)
+
+    def _build(self) -> None:
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
+        header = tk.Frame(self, bg=self.parent_app.NAVY, padx=26, pady=18)
+        header.grid(row=0, column=0, sticky="ew")
+        tk.Label(
+            header, text=self.parent_app.t("portability_title"),
+            bg=self.parent_app.NAVY, fg="#FFFFFF",
+            font=("Segoe UI", 19, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            header, text=self.parent_app.t("portability_intro"),
+            bg=self.parent_app.NAVY, fg="#D5E3F0", font=("Segoe UI", 10),
+            justify="left", wraplength=1100,
+        ).pack(anchor="w", pady=(5, 0))
+
+        summary = self.audit.get("summary") or (
+            self.audit.get("_localPortabilityAudit") or {}
+        ).get("summary") or {}
+        covered = int(summary.get("translatedReferences", 0)) + int(
+            summary.get("excludedMachineStateReferences", 0)
+        )
+        review = int(summary.get("needsReviewReferences", 0))
+        summary_bar = tk.Frame(self, bg=self.parent_app.BG)
+        summary_bar.grid(row=1, column=0, sticky="ew", padx=24, pady=12)
+        for column, (value, label, color) in enumerate((
+            (covered, self.parent_app.t("portability_covered"), self.parent_app.SUCCESS),
+            (review, self.parent_app.t("portability_review"), "#C47A00"),
+        )):
+            card = tk.Frame(
+                summary_bar, bg=self.parent_app.CARD,
+                highlightbackground=self.parent_app.BORDER, highlightthickness=1,
+                padx=16, pady=9,
+            )
+            card.grid(row=0, column=column, sticky="ew", padx=(0, 8))
+            tk.Label(
+                card, text=f"{value:,}", bg=self.parent_app.CARD, fg=color,
+                font=("Segoe UI", 16, "bold"),
+            ).pack(anchor="w")
+            tk.Label(
+                card, text=label, bg=self.parent_app.CARD,
+                fg=self.parent_app.MUTED, font=("Segoe UI", 9),
+            ).pack(anchor="w")
+
+        table_frame = tk.Frame(
+            self, bg=self.parent_app.CARD,
+            highlightbackground=self.parent_app.BORDER, highlightthickness=1,
+        )
+        table_frame.grid(row=2, column=0, sticky="nsew", padx=24)
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+        columns = ("impact", "field", "kind", "references", "exists", "handling")
+        self.tree = ttk.Treeview(
+            table_frame, columns=columns, show="headings",
+            style="Selection.Treeview", selectmode="browse",
+        )
+        headings = {
+            "impact": "portability_impact",
+            "field": "portability_field",
+            "kind": "portability_kind",
+            "references": "portability_references",
+            "exists": "portability_exists",
+            "handling": "portability_handling",
+        }
+        for column, key in headings.items():
+            self.tree.heading(column, text=self.parent_app.t(key))
+        self.tree.column("impact", width=150, minwidth=120, stretch=False)
+        self.tree.column("field", width=250, minwidth=180)
+        self.tree.column("kind", width=150, minwidth=120, stretch=False)
+        self.tree.column("references", width=100, minwidth=85, anchor="e", stretch=False)
+        self.tree.column("exists", width=125, minwidth=105, stretch=False)
+        self.tree.column("handling", width=225, minwidth=180)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.tree.configure(yscrollcommand=scroll.set)
+        self.tree.tag_configure("low", foreground="#0B6B47")
+        self.tree.tag_configure("medium", foreground="#9A6200")
+        self.tree.tag_configure("high", foreground="#B42318")
+        for index, item in enumerate(self.findings):
+            iid = f"finding-{index}"
+            self.item_by_iid[iid] = item
+            impact = str(item.get("impact") or "medium")
+            self.tree.insert(
+                "", "end", iid=iid,
+                values=(
+                    self.parent_app.t(f"portability_{impact}"),
+                    item.get("schemaField", "—"),
+                    self._label("", str(item.get("pathKind") or "external-or-unknown")),
+                    f"{int(item.get('occurrences', 0)):,}",
+                    self.parent_app.t(
+                        "portability_present"
+                        if item.get("pathStatus") == "present"
+                        else "portability_missing"
+                        if item.get("pathStatus") == "missing"
+                        else "portability_not_checked"
+                    ),
+                    self._label("", str(item.get("backupHandling") or "preserved-unchanged")),
+                ),
+                tags=(impact,),
+            )
+        self.tree.bind("<<TreeviewSelect>>", self._show_details)
+
+        detail_card = tk.Frame(
+            self, bg=self.parent_app.CARD,
+            highlightbackground=self.parent_app.BORDER, highlightthickness=1,
+            padx=14, pady=10,
+        )
+        detail_card.grid(row=3, column=0, sticky="ew", padx=24, pady=(10, 0))
+        self.detail_label = tk.Label(
+            detail_card,
+            text=self.parent_app.t("portability_no_details") if not self.findings else "",
+            bg=self.parent_app.CARD, fg=self.parent_app.TEXT_COLOR,
+            justify="left", anchor="w", wraplength=1100, font=("Segoe UI", 9),
+        )
+        self.detail_label.pack(fill="x")
+
+        footer = ttk.Frame(self, style="App.TFrame")
+        footer.grid(row=4, column=0, sticky="ew", padx=24, pady=14)
+        ttk.Checkbutton(
+            footer, text=self.parent_app.t("portability_show_paths"),
+            variable=self.show_paths, command=self._show_details,
+        ).pack(side="left")
+        ttk.Label(
+            footer, text=self.parent_app.t("portability_privacy"),
+            style="Muted.TLabel",
+        ).pack(side="left", padx=(14, 0))
+        ttk.Button(
+            footer, text=self.parent_app.t("close"), command=self.destroy,
+            style="Secondary.TButton",
+        ).pack(side="right")
+        if self.findings:
+            first = self.tree.get_children()[0]
+            self.tree.selection_set(first)
+            self.tree.focus(first)
+            self._show_details()
+
+    def _show_details(self, _event=None) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            return
+        item = self.item_by_iid.get(selection[0], {})
+        local_paths = list(item.get("localPaths") or [])
+        if self.show_paths.get() and local_paths:
+            examples = "\n".join(f"• {path}" for path in local_paths)
+        else:
+            kind = str(item.get("pathKind") or "external-or-unknown")
+            placeholder = {
+                "profile-relative": "%USERPROFILE%\\…",
+                "project-relative": "%PROJECT_ROOT%\\…",
+                "external-or-unknown": "%EXTERNAL_OR_OLD_PATH%\\…",
+                "old-source-location": "%OLD_COMPUTER_PATH%\\…",
+            }.get(kind, "%LOCAL_PATH%\\…")
+            examples = f"• {placeholder}"
+        impact = str(item.get("impact") or "medium")
+        self.detail_label.configure(
+            text=self.parent_app.t(
+                "portability_detail_text",
+                field=item.get("schemaField", "—"),
+                source=item.get("source", "—"),
+                count=f"{int(item.get('occurrences', 0)):,}",
+                included=self.parent_app.t("yes" if item.get("dataIncluded") else "no"),
+                translated=self.parent_app.t("yes" if item.get("translationPlanned") else "no"),
+                impact=self.parent_app.t(f"portability_{impact}"),
+                paths=examples,
+            )
+        )
+
+
 class DiagnosticsDialog(tk.Toplevel):
     STATUS_COLORS = {
         diagnostics.STATUS_PASS: "#18A66A",
@@ -1463,8 +1758,10 @@ class DiagnosticsDialog(tk.Toplevel):
         if check_id == "portability_audit":
             return (
                 f"{facts.get('coveredReferences', 0)} padverwijzing(en) zijn afgedekt; "
-                f"{facts.get('needsReviewReferences', 0)} verwijzing(en) in "
-                f"{facts.get('fieldsNeedingReview', 0)} veld(en) vragen aandacht."
+                f"{facts.get('needsReviewReferences', 0)} bewaarde verwijzing(en) in "
+                f"{facts.get('fieldsNeedingReview', 0)} veld(en) vragen aandacht. "
+                f"{facts.get('missingReviewReferences', 0)} wijzen naar paden die niet meer bestaan. "
+                "Back-up en herstel kunnen doorgaan; er worden geen databasegegevens weggelaten."
                 if facts.get("needsReviewReferences") or facts.get("scanErrors")
                 else f"Alle {facts.get('pathReferences', 0)} gevonden padverwijzingen vallen onder bekende vertaal- of uitsluitingsregels."
             )
@@ -1584,10 +1881,11 @@ class DiagnosticsDialog(tk.Toplevel):
         self.tree.configure(yscrollcommand=scroll.set)
         for status_name, color in self.STATUS_COLORS.items():
             self.tree.tag_configure(status_name, foreground=color)
+        self.check_by_iid: dict[str, dict] = {}
         for item in self.report.get("checks", []):
             check_id = str(item.get("id") or "")
             item_status = str(item.get("status") or diagnostics.STATUS_NOTICE)
-            self.tree.insert(
+            iid = self.tree.insert(
                 "", "end",
                 values=(
                     "●  " + self.parent_app.t(f"diagnostics_{item_status}"),
@@ -1596,6 +1894,8 @@ class DiagnosticsDialog(tk.Toplevel):
                 ),
                 tags=(item_status,),
             )
+            self.check_by_iid[iid] = item
+        self.tree.bind("<Double-1>", self._open_selected_details)
 
         tk.Label(
             body,
@@ -1608,17 +1908,35 @@ class DiagnosticsDialog(tk.Toplevel):
         actions = ttk.Frame(body, style="App.TFrame")
         actions.grid(row=6, column=0, sticky="e", pady=(14, 0))
         ttk.Button(
+            actions, text=self.parent_app.t("portability_details"),
+            command=self._open_portability_details, style="Secondary.TButton",
+        ).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(
             actions, text=self.parent_app.t("diagnostics_copy"),
             command=self._copy, style="Secondary.TButton",
-        ).grid(row=0, column=0, padx=(0, 8))
+        ).grid(row=0, column=1, padx=(0, 8))
         ttk.Button(
             actions, text=self.parent_app.t("diagnostics_save"),
             command=self._save, style="Primary.TButton",
-        ).grid(row=0, column=1, padx=(0, 8))
+        ).grid(row=0, column=2, padx=(0, 8))
         ttk.Button(
             actions, text=self.parent_app.t("close"), command=self.destroy,
             style="Secondary.TButton",
-        ).grid(row=0, column=2)
+        ).grid(row=0, column=3)
+
+    def _open_selected_details(self, _event=None) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            return
+        item = self.check_by_iid.get(selection[0], {})
+        if item.get("id") == "portability_audit":
+            self._open_portability_details()
+
+    def _open_portability_details(self) -> None:
+        audit = self.report.get("_localPortabilityAudit") or self.report.get(
+            "portabilityAudit", {}
+        )
+        PathPortabilityDialog(self, audit)
 
     def _copy(self) -> None:
         self.clipboard_clear()
@@ -1665,6 +1983,7 @@ class TransferApp(tk.Tk):
     CARD = "#FFFFFF"
     NAVY = "#102A43"
     BLUE = "#1769E0"
+    AMBER = "#F4A62A"
     TEXT_COLOR = "#1B2733"
     MUTED = "#60758A"
     BORDER = "#D9E2EC"
@@ -1680,8 +1999,8 @@ class TransferApp(tk.Tk):
         self.last_version_check: dict | None = None
         self.last_result_model: dict | None = None
         self.last_result_verified = False
-        self.geometry("1060x820")
-        self.minsize(860, 700)
+        self.geometry("1180x800")
+        self.minsize(980, 700)
         self.configure(background=self.BG)
         self._configure_styles()
         self._build()
@@ -1769,6 +2088,27 @@ class TransferApp(tk.Tk):
             foreground=[("active", "#FFFFFF"), ("disabled", "#EEF3F8")],
         )
         style.configure(
+            "HeroPrimary.TButton", background=self.AMBER, foreground=self.NAVY,
+            bordercolor=self.AMBER, font=("Segoe UI", 10, "bold"),
+            padding=(18, 10), relief="solid"
+        )
+        style.map(
+            "HeroPrimary.TButton",
+            background=[("active", "#FFB83E"), ("disabled", "#E4D3AE")],
+            foreground=[("active", self.NAVY), ("disabled", "#7E8791")],
+        )
+        style.configure(
+            "CardAction.TButton", background=self.CARD, foreground=self.NAVY,
+            bordercolor=self.BORDER, font=("Segoe UI", 10, "bold"),
+            padding=(18, 10), relief="solid"
+        )
+        style.map(
+            "CardAction.TButton",
+            background=[("active", "#EAF2FD"), ("disabled", "#EEF2F6")],
+            foreground=[("active", self.BLUE), ("disabled", "#91A1B2")],
+            bordercolor=[("active", self.BLUE)],
+        )
+        style.configure(
             "Secondary.TButton", background=self.CARD, foreground=self.NAVY,
             bordercolor=self.BORDER, font=("Segoe UI", 9, "bold"),
             padding=(12, 8), relief="solid"
@@ -1813,102 +2153,198 @@ class TransferApp(tk.Tk):
         )
 
     def _build(self) -> None:
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(5, weight=1)
-        header = ttk.Frame(self, padding=(28, 22, 28, 20), style="Header.TFrame")
-        header.grid(row=0, column=0, sticky="ew")
-        header.columnconfigure(1, weight=1)
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        sidebar = tk.Frame(self, bg=self.NAVY, width=244)
+        sidebar.grid(row=0, column=0, sticky="ns")
+        sidebar.grid_propagate(False)
+        sidebar.columnconfigure(0, weight=1)
+
         logo = tk.Canvas(
-            header, width=52, height=52, bg=self.NAVY,
+            sidebar, width=62, height=62, bg=self.NAVY,
             highlightthickness=0, borderwidth=0
         )
-        logo.create_oval(4, 4, 48, 48, fill="#FFFFFF", outline="")
-        logo.create_rectangle(21, 2, 31, 18, fill="#FFB547", outline="")
-        logo.create_rectangle(21, 34, 31, 50, fill="#FFB547", outline="")
-        logo.create_rectangle(2, 21, 18, 31, fill="#FFB547", outline="")
-        logo.create_rectangle(34, 21, 50, 31, fill="#FFB547", outline="")
-        logo.create_oval(17, 17, 35, 35, fill=self.NAVY, outline="")
-        logo.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 14))
-        self.title_label = ttk.Label(header, style="Title.TLabel")
-        self.title_label.grid(row=0, column=1, sticky="w")
-        self.subtitle_label = ttk.Label(header, style="Subtitle.TLabel")
-        self.subtitle_label.grid(row=1, column=1, sticky="w", pady=(4, 0))
-        self.language_label = ttk.Label(header, style="Header.TLabel")
-        self.language_label.grid(row=0, column=2, padx=(12, 6))
+        logo.create_oval(5, 5, 57, 57, fill="#FFFFFF", outline="")
+        logo.create_rectangle(25, 2, 37, 22, fill=self.AMBER, outline="")
+        logo.create_rectangle(25, 40, 37, 60, fill=self.AMBER, outline="")
+        logo.create_rectangle(2, 25, 22, 37, fill=self.AMBER, outline="")
+        logo.create_rectangle(40, 25, 60, 37, fill=self.AMBER, outline="")
+        logo.create_oval(20, 20, 42, 42, fill=self.NAVY, outline="")
+        logo.grid(row=0, column=0, pady=(28, 10))
+        self.title_label = tk.Label(
+            sidebar, bg=self.NAVY, fg="#FFFFFF", font=("Segoe UI", 15, "bold"),
+            anchor="center"
+        )
+        self.title_label.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 24))
+        self.subtitle_label = tk.Label(sidebar, text="", bg=self.NAVY)
+
+        def nav_button(row: int, command) -> tk.Button:
+            button = tk.Button(
+                sidebar, command=command, anchor="w", relief="flat", borderwidth=0,
+                bg=self.NAVY, fg="#DCE8F4", activebackground="#1E4668",
+                activeforeground="#FFFFFF", disabledforeground="#8297AA",
+                font=("Segoe UI", 10, "bold"), padx=24, pady=12,
+                cursor="hand2"
+            )
+            button.grid(row=row, column=0, sticky="ew", padx=10, pady=2)
+            return button
+
+        self.overview_button = nav_button(2, lambda: self.main_panel.focus_set())
+        self.nav_backup_button = nav_button(3, self._backup)
+        self.nav_restore_button = nav_button(4, self._restore)
+        self.nav_recovery_button = nav_button(5, self._manage_recovery)
+        self.nav_diagnostics_button = nav_button(6, self._diagnostics)
+        self.overview_button.configure(bg="#1E4668", fg="#FFFFFF")
+
+        self.sidebar_note = tk.Label(
+            sidebar, bg=self.NAVY, fg="#9FB4C8", justify="left", wraplength=196,
+            font=("Segoe UI", 8)
+        )
+        self.sidebar_note.grid(row=7, column=0, sticky="sw", padx=24, pady=22)
+        sidebar.rowconfigure(7, weight=1)
+
+        self.main_panel = ttk.Frame(self, style="App.TFrame", padding=(28, 22, 28, 20))
+        self.main_panel.grid(row=0, column=1, sticky="nsew")
+        self.main_panel.columnconfigure(0, weight=1)
+        self.main_panel.rowconfigure(7, weight=1)
+
+        header = ttk.Frame(self.main_panel, style="App.TFrame")
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        header.columnconfigure(0, weight=1)
+        self.overview_title = ttk.Label(
+            header, style="DialogTitle.TLabel", font=("Segoe UI", 22, "bold")
+        )
+        self.overview_title.grid(row=0, column=0, sticky="w")
+        self.overview_subtitle = ttk.Label(header, style="Body.TLabel")
+        self.overview_subtitle.grid(row=1, column=0, sticky="w", pady=(3, 0))
+        self.header_status = tk.Label(
+            header, bg="#E8F7EF", fg="#128250", font=("Segoe UI", 9, "bold"),
+            padx=12, pady=6
+        )
+        self.header_status.grid(row=0, column=1, rowspan=2, padx=(12, 16))
+        self.language_label = ttk.Label(header, style="Body.TLabel")
+        self.language_label.grid(row=0, column=2, rowspan=2, padx=(0, 6))
         self.language_box = ttk.Combobox(
-            header,
-            state="readonly",
-            width=12,
-            values=("English", "Nederlands"),
-            style="Language.TCombobox",
+            header, state="readonly", width=11,
+            values=("English", "Nederlands"), style="Language.TCombobox"
         )
         self.language_box.current(0 if self.language.get() == "en" else 1)
-        self.language_box.grid(row=0, column=3)
+        self.language_box.grid(row=0, column=3, rowspan=2)
         self.language_box.bind("<<ComboboxSelected>>", self._change_language)
 
         self.detection = ttk.LabelFrame(
-            self, padding=(18, 14), style="Card.TLabelframe"
+            self.main_panel, padding=(16, 11), style="Card.TLabelframe"
         )
-        self.detection.grid(row=1, column=0, sticky="ew", padx=28, pady=(18, 8))
+        self.detection.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         self.detection.columnconfigure(1, weight=1)
+        self.detection.columnconfigure(3, weight=1)
         self.codex_label = ttk.Label(self.detection, style="Field.TLabel")
         self.codex_label.grid(row=0, column=0, sticky="w")
         self.codex_value = ttk.Label(
             self.detection, text=str(Path.home() / ".codex"), style="Value.TLabel"
         )
-        self.codex_value.grid(row=0, column=1, sticky="w", padx=(12, 0))
+        self.codex_value.grid(row=0, column=1, sticky="w", padx=(10, 22))
         self.usb_label = ttk.Label(self.detection, style="Field.TLabel")
-        self.usb_label.grid(row=1, column=0, sticky="w", pady=(9, 0))
+        self.usb_label.grid(row=0, column=2, sticky="w")
         drives = windows.removable_drives()
         self.usb_value = ttk.Label(
-            self.detection, text=", ".join(map(str, drives)) or "—",
-            style="Value.TLabel"
+            self.detection, text=", ".join(map(str, drives)) or "—", style="Value.TLabel"
         )
-        self.usb_value.grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(9, 0))
+        self.usb_value.grid(row=0, column=3, sticky="w", padx=(10, 0))
 
-        buttons = ttk.Frame(self, padding=(28, 6), style="App.TFrame")
-        buttons.grid(row=2, column=0, sticky="ew")
-        for column in range(2):
-            buttons.columnconfigure(column, weight=1)
+        actions = ttk.Frame(self.main_panel, style="App.TFrame")
+        actions.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        actions.columnconfigure(0, weight=1)
+        actions.columnconfigure(1, weight=1)
+
+        backup_card = tk.Frame(
+            actions, bg=self.NAVY, highlightbackground=self.NAVY,
+            highlightthickness=1, padx=22, pady=18
+        )
+        backup_card.grid(row=0, column=0, sticky="nsew", padx=(0, 7))
+        self.backup_heading = tk.Label(
+            backup_card, bg=self.NAVY, fg="#FFFFFF", anchor="w",
+            font=("Segoe UI", 15, "bold")
+        )
+        self.backup_heading.pack(fill="x")
+        self.backup_description = tk.Label(
+            backup_card, bg=self.NAVY, fg="#C9D8E8", anchor="w",
+            font=("Segoe UI", 9), pady=5
+        )
+        self.backup_description.pack(fill="x")
+        backup_actions = tk.Frame(backup_card, bg=self.NAVY)
+        backup_actions.pack(fill="x", pady=(10, 0))
         self.backup_button = ttk.Button(
-            buttons, command=self._backup, style="Action.TButton"
+            backup_actions, command=self._backup, style="HeroPrimary.TButton"
         )
-        self.backup_button.grid(row=0, column=0, sticky="ew", padx=(0, 7), pady=7)
-        self.verify_backup_button = ttk.Button(
-            buttons, command=self._verify_backup, style="Action.TButton"
+        self.backup_button.pack(side="left")
+        self.verify_backup_button = tk.Button(
+            backup_actions, command=self._verify_backup, relief="flat", borderwidth=0,
+            bg=self.NAVY, fg="#FFFFFF", activebackground="#1E4668",
+            activeforeground="#FFFFFF", disabledforeground="#8297AA",
+            font=("Segoe UI", 9, "bold"), padx=14, pady=8, cursor="hand2"
         )
-        self.verify_backup_button.grid(row=0, column=1, sticky="ew", padx=(7, 0), pady=7)
-        self.restore_button = ttk.Button(
-            buttons, command=self._restore, style="Action.TButton"
-        )
-        self.restore_button.grid(row=1, column=0, sticky="ew", padx=(0, 7), pady=7)
-        self.verify_restore_button = ttk.Button(
-            buttons, command=self._verify_restore, style="Action.TButton"
-        )
-        self.verify_restore_button.grid(row=1, column=1, sticky="ew", padx=(7, 0), pady=7)
-        self.recovery_button = ttk.Button(
-            buttons, command=self._manage_recovery, style="Action.TButton"
-        )
-        self.recovery_button.grid(
-            row=2, column=0, columnspan=2, sticky="ew", pady=(7, 3)
-        )
-        self.diagnostics_button = ttk.Button(
-            buttons, command=self._diagnostics, style="Action.TButton"
-        )
-        self.diagnostics_button.grid(
-            row=3, column=0, columnspan=2, sticky="ew", pady=(7, 3)
-        )
-        self.action_buttons = (
-            self.backup_button,
-            self.verify_backup_button,
-            self.restore_button,
-            self.verify_restore_button,
-            self.recovery_button,
-            self.diagnostics_button,
-        )
+        self.verify_backup_button.pack(side="left", padx=(10, 0))
 
-        status_frame = ttk.Frame(self, padding=(28, 5), style="App.TFrame")
-        status_frame.grid(row=3, column=0, sticky="ew")
+        restore_card = tk.Frame(
+            actions, bg=self.CARD, highlightbackground=self.BORDER,
+            highlightthickness=1, padx=22, pady=18
+        )
+        restore_card.grid(row=0, column=1, sticky="nsew", padx=(7, 0))
+        self.restore_heading = tk.Label(
+            restore_card, bg=self.CARD, fg=self.NAVY, anchor="w",
+            font=("Segoe UI", 15, "bold")
+        )
+        self.restore_heading.pack(fill="x")
+        self.restore_description = tk.Label(
+            restore_card, bg=self.CARD, fg=self.MUTED, anchor="w",
+            font=("Segoe UI", 9), pady=5
+        )
+        self.restore_description.pack(fill="x")
+        restore_actions = tk.Frame(restore_card, bg=self.CARD)
+        restore_actions.pack(fill="x", pady=(10, 0))
+        self.restore_button = ttk.Button(
+            restore_actions, command=self._restore, style="CardAction.TButton"
+        )
+        self.restore_button.pack(side="left")
+        self.verify_restore_button = ttk.Button(
+            restore_actions, command=self._verify_restore, style="Secondary.TButton"
+        )
+        self.verify_restore_button.pack(side="left", padx=(10, 0))
+
+        metrics = ttk.Frame(self.main_panel, style="App.TFrame")
+        metrics.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        for column in range(3):
+            metrics.columnconfigure(column, weight=1)
+
+        def metric_card(column: int):
+            card = tk.Frame(
+                metrics, bg=self.CARD, highlightbackground=self.BORDER,
+                highlightthickness=1, padx=16, pady=12
+            )
+            card.grid(
+                row=0, column=column, sticky="nsew",
+                padx=(0 if column == 0 else 6, 0 if column == 2 else 6)
+            )
+            heading = tk.Label(
+                card, bg=self.CARD, fg=self.MUTED, anchor="w",
+                font=("Segoe UI", 8)
+            )
+            heading.pack(fill="x")
+            value = tk.Label(
+                card, bg=self.CARD, fg=self.NAVY, anchor="w",
+                font=("Segoe UI", 12, "bold")
+            )
+            value.pack(fill="x", pady=(4, 0))
+            return heading, value
+
+        self.latest_heading, self.latest_value = metric_card(0)
+        self.included_heading, self.included_value = metric_card(1)
+        self.storage_heading, self.storage_value = metric_card(2)
+
+        status_frame = ttk.Frame(self.main_panel, style="App.TFrame")
+        status_frame.grid(row=4, column=0, sticky="ew", pady=(0, 8))
         status_frame.columnconfigure(1, weight=1)
         self.status_dot = tk.Label(
             status_frame, text="●", bg=self.BG, fg=self.SUCCESS,
@@ -1923,14 +2359,14 @@ class TransferApp(tk.Tk):
         self.progress.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(7, 0))
 
         self.result_frame = tk.Frame(
-            self,
+            self.main_panel,
             bg=self.CARD,
             highlightbackground=self.BORDER,
             highlightthickness=1,
             padx=18,
             pady=12,
         )
-        self.result_frame.grid(row=4, column=0, sticky="ew", padx=28, pady=(4, 5))
+        self.result_frame.grid(row=5, column=0, sticky="ew", pady=(2, 8))
         self.result_frame.columnconfigure(1, weight=1)
         self.result_title = tk.Label(
             self.result_frame,
@@ -1963,14 +2399,14 @@ class TransferApp(tk.Tk):
         self.result_path.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         self.result_frame.grid_remove()
 
-        log_frame = ttk.Frame(self, padding=(28, 8, 28, 22), style="App.TFrame")
-        log_frame.grid(row=5, column=0, sticky="nsew")
+        log_frame = ttk.Frame(self.main_panel, style="App.TFrame")
+        log_frame.grid(row=7, column=0, sticky="nsew")
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(1, weight=1)
         self.activity_label = ttk.Label(log_frame, style="Section.TLabel")
         self.activity_label.grid(row=0, column=0, sticky="w", pady=(0, 6))
         self.log = tk.Text(
-            log_frame, height=12, wrap="word", state="disabled",
+            log_frame, height=7, wrap="word", state="disabled",
             font=("Cascadia Mono", 9), background="#14212E", foreground="#DCE7F2",
             insertbackground="#FFFFFF", selectbackground=self.BLUE,
             borderwidth=0, padx=13, pady=11
@@ -1979,6 +2415,18 @@ class TransferApp(tk.Tk):
         scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log.yview)
         scroll.grid(row=1, column=1, sticky="ns")
         self.log.configure(yscrollcommand=scroll.set)
+        self.recovery_button = self.nav_recovery_button
+        self.diagnostics_button = self.nav_diagnostics_button
+        self.action_buttons = (
+            self.backup_button,
+            self.verify_backup_button,
+            self.restore_button,
+            self.verify_restore_button,
+            self.nav_backup_button,
+            self.nav_restore_button,
+            self.nav_recovery_button,
+            self.nav_diagnostics_button,
+        )
 
     def _change_language(self, _event=None) -> None:
         self.language.set("en" if self.language_box.current() == 0 else "nl")
@@ -2002,6 +2450,14 @@ class TransferApp(tk.Tk):
         self.title(self.t("title"))
         self.title_label.configure(text=self.t("title"))
         self.subtitle_label.configure(text=self.t("subtitle"))
+        self.sidebar_note.configure(text=self.t("subtitle"))
+        self.overview_title.configure(text=self.t("overview"))
+        self.overview_subtitle.configure(text=self.t("overview_subtitle"))
+        self.overview_button.configure(text="⌂   " + self.t("overview"))
+        self.nav_backup_button.configure(text="↑   " + self.t("nav_backup"))
+        self.nav_restore_button.configure(text="↓   " + self.t("nav_restore"))
+        self.nav_recovery_button.configure(text="↶   " + self.t("recovery"))
+        self.nav_diagnostics_button.configure(text="✓   " + self.t("diagnostics"))
         self.language_label.configure(text=self.t("language"))
         self.detection.configure(text=self.t("computer"))
         self.codex_label.configure(text=self.t("codex_home") + ":")
@@ -2010,19 +2466,35 @@ class TransferApp(tk.Tk):
         self.verify_backup_button.configure(text=self.t("verify_backup"))
         self.restore_button.configure(text=self.t("restore"))
         self.verify_restore_button.configure(text=self.t("verify_restore"))
-        self.recovery_button.configure(text=self.t("recovery"))
-        self.diagnostics_button.configure(text=self.t("diagnostics"))
+        self.backup_heading.configure(text=self.t("backup"))
+        self.restore_heading.configure(text=self.t("restore"))
+        self.backup_description.configure(text=self.t("backup_description"))
+        self.restore_description.configure(text=self.t("restore_description"))
+        self.latest_heading.configure(text=self.t("latest_backup"))
+        self.included_heading.configure(text=self.t("included"))
+        self.storage_heading.configure(text=self.t("storage"))
         self.activity_label.configure(text=self.t("activity"))
         self._render_last_result()
         if self.launch_blocked:
             self.status_label.configure(text=self.t("extract_status"))
+            self.header_status.configure(
+                text="●  " + self.t("warning"), bg="#FFF4E5", fg="#A15C00"
+            )
         else:
             self.status_label.configure(text=self.t("working") if self.busy else self.t("ready"))
+            self.header_status.configure(
+                text="●  " + (self.t("working") if self.busy else self.t("ready")),
+                bg="#EAF2FD" if self.busy else "#E8F7EF",
+                fg=self.BLUE if self.busy else "#128250",
+            )
 
     def _render_last_result(self) -> None:
         model = self.last_result_model
         if not model:
             self.result_frame.grid_remove()
+            self.latest_value.configure(text=self.t("no_backup_yet"))
+            self.included_value.configure(text="—")
+            self.storage_value.configure(text="—")
             return
         status_key = (
             "result_invalid"
@@ -2040,6 +2512,14 @@ class TransferApp(tk.Tk):
             fg=self.SUCCESS if model["valid"] else "#B42318",
         )
         metrics = model["metrics"]
+        self.latest_value.configure(text=self.t(status_key))
+        self.included_value.configure(
+            text=(
+                f"{metrics['projects']} {self.t('metric_projects').lower()} · "
+                f"{metrics['chats']} {self.t('metric_chats').lower()}"
+            )
+        )
+        self.storage_value.configure(text=_format_bytes(metrics["bytes"]))
         self.result_metrics.configure(
             text=(
                 f"{self.t('metric_chats')}: {metrics['chats']}    "
@@ -2538,12 +3018,16 @@ class TransferApp(tk.Tk):
 
         def done(result):
             if result["valid"]:
+                path_check = result["checks"].get("pathPortability", {})
+                needs_review = int(path_check.get("needsReviewReferences", 0))
                 messagebox.showinfo(
                     self.t("verify_restore"),
                     self.t(
-                        "valid_restore",
+                        "valid_restore_notice" if needs_review else "valid_restore",
                         threads=result["checks"].get("threads", 0),
                         projects=result["checks"].get("projects", 0),
+                        paths=needs_review,
+                        old=int(path_check.get("oldSourceReferences", 0)),
                     ),
                     parent=self,
                 )
