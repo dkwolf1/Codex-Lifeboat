@@ -7,7 +7,7 @@
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
+[Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
 > **Public testing release:** version 3.4.2 is a beta release candidate. Its
 > automated source, executable, and extracted-ZIP tests pass, but real

@@ -2,7 +2,7 @@
 
 **Codex met één programma back-uppen, herstellen en overzetten naar een andere Windows-pc.**
 
-[English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
+[Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
 > **Openbare testrelease:** versie 3.4.2 is een bèta/release candidate. De
 > geautomatiseerde bron-, EXE- en ZIP-tests slagen, maar praktijkresultaten van
