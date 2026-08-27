@@ -59,6 +59,7 @@ BLOCKED_CODEX_DIRS = {
     "cache",
     "computer-use",
     "node_repl",
+    "plugins",
     "process_manager",
     "thread-writer-locks",
 }
@@ -1295,6 +1296,11 @@ def find_attachment_paths(session_files: Iterable[Path]) -> dict[str, set[str]]:
     return results
 
 
+def attachment_source_is_file(source: Path) -> bool:
+    """Probe an attachment through a testable boundary for Windows access errors."""
+    return source.is_file()
+
+
 def copy_attachments(
     package_root: Path,
     enabled: bool,
@@ -1316,20 +1322,33 @@ def copy_attachments(
         source = clean_windows_path(original)
         attachment_id = stable_id(source)
         relative = f"attachments/attachment-{attachment_id}/{source.name}"
-        source_exists = source.is_file()
+        probe_error: OSError | None = None
+        try:
+            source_exists = attachment_source_is_file(source)
+        except OSError as exc:
+            source_exists = False
+            probe_error = exc
         item = {
             "mappingKind": "attachment",
             "id": attachment_id,
             "originalPath": str(source),
             "backupRelativePath": relative,
             "sourcePresent": source_exists,
-            "sourceStatus": "copied" if source_exists else "missing",
+            "sourceStatus": (
+                "unreadable" if probe_error else ("copied" if source_exists else "missing")
+            ),
             "referencedByThreadIds": sorted(references[original]),
             "location": path_model.describe_location(
                 str(source), str(source_profile), known_folders
             ),
         }
-        if source_exists:
+        if probe_error is not None:
+            item["copyError"] = f"{type(probe_error).__name__}: {probe_error}"
+            missing.append(item)
+            warnings.append(
+                f"Historical attachment exists but is unreadable: {source}: {probe_error}"
+            )
+        elif source_exists:
             destination = package_root / relative
             try:
                 copy_file(source, destination)

@@ -41,7 +41,8 @@ session rollouts, a consistent SQLite snapshot, portable global state, available
 referenced attachments, skills, instructions, and portable user configuration.
 
 Source authentication, installation IDs, machine identity, sandboxes, caches,
-temporary files, locks, active SQLite sidecars, and runtime state are excluded.
+downloaded plugin runtimes, temporary files, locks, active SQLite sidecars, and
+runtime state are excluded. Plugin configuration and user skills remain portable.
 
 ## Conflict and cleanup model
 

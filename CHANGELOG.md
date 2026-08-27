@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Excluded the machine-specific `.codex/plugins` download cache and active plugin
+  runtime from new backups; plugin settings and user skills remain portable.
+- Restore now ignores plugin-runtime payloads found in older backups and preserves
+  the destination computer's local plugin runtime, so existing backups stay usable.
+- Inaccessible historical temporary chat attachments now produce a clear warning
+  instead of aborting the complete backup during the availability check.
+
 ## 3.4.2 - 2026-08-25
 
 - Replaced the ambiguous path-portability count with local, privacy-conscious

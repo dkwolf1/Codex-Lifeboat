@@ -103,8 +103,9 @@ leeg totdat op deze computer een back-up is teruggezet.
 - Begrensde analyse van zeer grote rollouts en honderden historische
   bijlageverwijzingen, zonder de betekenis van draagbare vingerafdrukken te wijzigen
 
-De aanmelding, installatie-id, computeridentiteit, caches, locks en
-sandboxgeheimen van de broncomputer worden bewust niet teruggezet.
+De aanmelding, installatie-id, computeridentiteit, caches, locks,
+gedownloade plugin-runtimes en sandboxgeheimen van de broncomputer worden bewust
+niet teruggezet. Plugininstellingen en zelfgemaakte skills blijven wel inbegrepen.
 
 Gebruik **Systeemcontrole en diagnose** wanneer de voorbereiding van een back-up
 of herstelactie onduidelijk is. De functie controleert zonder wijzigingen onder

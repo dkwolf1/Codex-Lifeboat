@@ -38,6 +38,7 @@ RUNTIME_NAMES = {
     "cache",
     "computer-use",
     "node_repl",
+    "plugins",
     "process_manager",
     "thread-writer-locks",
 }

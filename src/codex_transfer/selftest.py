@@ -1234,10 +1234,12 @@ def _attachment_resilience_test(root: Path) -> bool:
     session = package_root / "codex" / "sessions" / "rollout-attachment-test.jsonl"
     source_profile = fixture / "source-user"
     attachment = source_profile / "AppData" / "Local" / "Temp" / "codex-denied.png"
+    probe_denied = source_profile / "AppData" / "Local" / "Temp" / "codex-probe-denied.png"
     tool_only = source_profile / "AppData" / "Local" / "Temp" / "codex-tool-only.png"
     attachment.parent.mkdir(parents=True)
     session.parent.mkdir(parents=True)
     attachment.write_bytes(b"denied-during-copy")
+    probe_denied.write_bytes(b"denied-during-probe")
     tool_only.write_bytes(b"tool-output-only")
     thread_id = "attachment-resilience-thread"
     session.write_text(
@@ -1247,6 +1249,15 @@ def _attachment_resilience_test(root: Path) -> bool:
                     {
                         "type": "session_meta",
                         "payload": {"id": thread_id, "cwd": str(source_profile)},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "user_message",
+                            "message": f"Another attached image: {probe_denied}",
+                        },
                     }
                 ),
                 json.dumps(
@@ -1275,14 +1286,21 @@ def _attachment_resilience_test(root: Path) -> bool:
     references = backup.find_attachment_paths([session])
     warnings: list[str] = []
     original_copy_file = backup.copy_file
+    original_attachment_probe = backup.attachment_source_is_file
 
     def deny_attachment_copy(source: Path, destination: Path) -> None:
         if source.resolve(strict=False) == attachment.resolve(strict=False):
             raise PermissionError(13, "permission denied by self-test", str(source))
         original_copy_file(source, destination)
 
+    def deny_attachment_probe(source: Path) -> bool:
+        if source.resolve(strict=False) == probe_denied.resolve(strict=False):
+            raise PermissionError(5, "access denied by self-test", str(source))
+        return original_attachment_probe(source)
+
     try:
         backup.copy_file = deny_attachment_copy
+        backup.attachment_source_is_file = deny_attachment_probe
         copied, unavailable = backup.copy_attachments(
             package_root,
             True,
@@ -1292,15 +1310,89 @@ def _attachment_resilience_test(root: Path) -> bool:
         )
     finally:
         backup.copy_file = original_copy_file
+        backup.attachment_source_is_file = original_attachment_probe
     return bool(
-        set(references) == {str(attachment)}
+        set(references) == {str(attachment), str(probe_denied)}
         and references[str(attachment)] == {thread_id}
         and not copied
-        and len(unavailable) == 1
-        and unavailable[0].get("sourcePresent") is False
-        and unavailable[0].get("sourceStatus") == "unreadable"
-        and any("unreadable" in item for item in warnings)
-        and not (package_root / unavailable[0]["backupRelativePath"]).exists()
+        and len(unavailable) == 2
+        and all(item.get("sourcePresent") is False for item in unavailable)
+        and all(item.get("sourceStatus") == "unreadable" for item in unavailable)
+        and sum("unreadable" in item for item in warnings) == 2
+        and all(
+            not (package_root / item["backupRelativePath"]).exists()
+            for item in unavailable
+        )
+    )
+
+
+def _plugin_runtime_policy_test(root: Path) -> bool:
+    fixture = root / "plugin-runtime-policy"
+    source_codex = fixture / "source-user" / ".codex"
+    package_root = fixture / "package"
+    target_codex = fixture / "target-user" / ".codex"
+    plugin_source = source_codex / "plugins" / "cache" / "locked-plugin.bin"
+    skill_source = source_codex / "skills" / "demo" / "SKILL.md"
+    plugin_source.parent.mkdir(parents=True)
+    skill_source.parent.mkdir(parents=True)
+    plugin_source.write_bytes(b"machine-specific-plugin-runtime")
+    skill_source.write_text("# Portable skill\n", encoding="utf-8")
+    (source_codex / "config.toml").write_text(
+        "[plugins]\nenabled = true\n", encoding="utf-8"
+    )
+
+    original_copy_tree = backup.copy_tree
+
+    def reject_plugin_copy(
+        source: Path,
+        destination: Path,
+        exclude_fragments: list[str],
+        warnings: list[str],
+    ) -> tuple[int, int]:
+        if source.name.lower() == "plugins":
+            raise PermissionError(87, "plugin runtime must not be opened", str(source))
+        return original_copy_tree(source, destination, exclude_fragments, warnings)
+
+    warnings: list[str] = []
+    try:
+        backup.copy_tree = reject_plugin_copy
+        stats_files, _stats_bytes, stats_details = backup._portable_profile_stats(
+            source_codex
+        )
+        records = backup.copy_portable_codex_profile(
+            source_codex, package_root, warnings
+        )
+    finally:
+        backup.copy_tree = original_copy_tree
+
+    legacy_plugins = package_root / "codex" / "portable-profile" / "plugins"
+    (legacy_plugins / "cache").mkdir(parents=True)
+    (legacy_plugins / "cache" / "legacy-plugin.bin").write_bytes(b"legacy")
+    target_plugin = target_codex / "plugins" / "cache" / "target-plugin.bin"
+    target_plugin.parent.mkdir(parents=True)
+    target_plugin.write_bytes(b"keep-target-runtime")
+
+    class IdentityTranslator:
+        @staticmethod
+        def text(value: str) -> str:
+            return value
+
+    restored = restore._restore_portable_profile(
+        package_root, target_codex, IdentityTranslator()
+    )
+    record_names = {str(item.get("name", "")).lower() for item in records}
+    detail_names = {str(item.get("name", "")).lower() for item in stats_details}
+    return bool(
+        stats_files == 2
+        and "plugins" not in record_names
+        and "plugins" not in detail_names
+        and {"config.toml", "skills"}.issubset(record_names)
+        and not (target_codex / "plugins" / "cache" / "legacy-plugin.bin").exists()
+        and target_plugin.read_bytes() == b"keep-target-runtime"
+        and (target_codex / "config.toml").is_file()
+        and (target_codex / "skills" / "demo" / "SKILL.md").is_file()
+        and restored == 2
+        and not warnings
     )
 
 
@@ -3233,6 +3325,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "legacyFormat23Supported": supports_format("2.3"),
         "completePhase3Inventory": inventory_complete,
         "attachmentDetectionAndAccessResilience": _attachment_resilience_test(root),
+        "pluginRuntimeExcludedAndTargetPreserved": _plugin_runtime_policy_test(root),
         "projectRootInventoryAnalysis": _project_inventory_analysis_test(root),
         "lineageChangeModel": _lineage_model_test(),
         "streamingLineageDigest": _streaming_lineage_digest_test(root),

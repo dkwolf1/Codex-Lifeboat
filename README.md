@@ -79,7 +79,8 @@ It includes:
   historical attachment references, with unchanged portable fingerprint meaning
 
 It deliberately excludes source authentication, installation IDs, machine identity,
-caches, locks, sandbox secrets, and active runtime files.
+caches, locks, sandbox secrets, downloaded plugin runtimes, and active runtime files.
+Plugin configuration and user-created skills remain included.
 
 ## Back up the source computer
 

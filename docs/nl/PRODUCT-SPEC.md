@@ -40,8 +40,10 @@ Draagbare gegevens omvatten geselecteerde complete projectmappen, recente en
 gearchiveerde rollouts, een consistente SQLite-snapshot, draagbare globale status,
 beschikbare bijlagen, skills, instructies en draagbare gebruikersconfiguratie.
 
-Aanmelding, installatie-ID's, computeridentiteit, sandboxes, caches, tijdelijke
-bestanden, locks, actieve SQLite-sidecars en runtimegegevens worden uitgesloten.
+Aanmelding, installatie-ID's, computeridentiteit, sandboxes, caches, gedownloade
+plugin-runtimes, tijdelijke bestanden, locks, actieve SQLite-sidecars en
+runtimegegevens worden uitgesloten. Plugininstellingen en eigen skills blijven
+overdraagbaar.
 
 ## Conflict- en opschoningsmodel
 
