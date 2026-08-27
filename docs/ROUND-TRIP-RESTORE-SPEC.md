@@ -77,9 +77,9 @@ restore plan and are proven descendants of approved managed roots. It must
 never scan and clean an entire profile, drive, network share, or arbitrary
 directory.
 
-## Current 3.4.2 delivery boundary
+## Current 3.4.3 delivery boundary
 
-Release 3.4.2 implements phases 0–10.1 and reliability phases 13.1–13.5:
+Release 3.4.3 implements phases 0–10.1 and reliability phases 13.1–13.5:
 portable paths, permanent project identity, complete local inventory, backup
 lineage, reviewed location mapping, read-only comparison, transactional project
 mirrors, explicit conflict decisions, diagnostics, path auditing, Git-aware

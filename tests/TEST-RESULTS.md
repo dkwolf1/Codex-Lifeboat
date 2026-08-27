@@ -1,13 +1,13 @@
-# Test results 3.4.2
+# Test results 3.4.3
 
-Date: August 25, 2026
+Date: August 27, 2026
 Platform: Windows 11 build environment; target compatibility Windows 10/11 x64
 
 ## Automated end-to-end test
 
-The complete 75-check phase-0-through-13.5 source suite was executed successfully.
-The 3.4.2 standalone executable and the executable started from a freshly extracted
-portable ZIP both passed the same 75-check packaged gate and the 12/12 automated
+The complete 76-check phase-0-through-13.5 source suite was executed successfully.
+The 3.4.3 standalone executable and the executable started from a freshly extracted
+portable ZIP both passed the same 76-check packaged gate and the 12/12 automated
 Phase 11 matrix.
 
 | Check | Result |
@@ -50,6 +50,7 @@ Phase 11 matrix.
 | Present and missing referenced attachments inventoried with conversation IDs | Passed |
 | Tool-output paths excluded from attachment discovery | Passed |
 | Unreadable historical attachment reported without aborting backup | Passed |
+| Locked plugin runtime excluded while plugin configuration and user skills remain portable | Passed |
 | Project root collisions, nesting, absence and reparse status inventoried | Passed |
 | Unique backup, parent and anonymous source-device IDs | Passed |
 | B-to-A-to-B return backup retains one continuous lineage | Passed |

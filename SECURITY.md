@@ -5,7 +5,7 @@
 Security updates are provided for the latest published release of Codex Lifeboat.
 Older releases should be upgraded before reporting a problem.
 
-Version 3.4.2 is a public pre-release. Security-sensitive failures should still be
+Version 3.4.3 is a public pre-release. Security-sensitive failures should still be
 reported privately even when they occur during compatibility testing.
 
 ## Reporting a vulnerability
@@ -37,5 +37,5 @@ use synthetic data only.
 Official release assets include SHA-256 values. GitHub Actions release builds also
 publish build-provenance attestations for the EXE, portable ZIP, and checksum file.
 These checks establish file integrity and workflow provenance; they do not encrypt
-a backup and do not replace Windows Authenticode signing. The 3.4.2 executable is
+a backup and do not replace Windows Authenticode signing. The 3.4.3 executable is
 not commercially code-signed.

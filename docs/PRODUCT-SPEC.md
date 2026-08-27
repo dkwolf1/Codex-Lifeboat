@@ -12,7 +12,7 @@
 - English primary interface and documentation with Dutch translation.
 - Operation without administrator rights, Python, or an installer.
 
-Version 3.4.2 is a public beta/release candidate until the remaining physical
+Version 3.4.3 is a public beta/release candidate until the remaining physical
 Phase 11 tests are complete.
 
 ## User promise

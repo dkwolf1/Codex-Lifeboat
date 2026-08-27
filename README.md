@@ -3,20 +3,20 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Public test: 3.4.2](https://img.shields.io/badge/public%20test-v3.4.2-f59e0b)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.2)
+[![Public test: 3.4.3](https://img.shields.io/badge/public%20test-v3.4.3-f59e0b)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.3)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Public testing release:** version 3.4.2 is a beta release candidate. Its
+> **Public testing release:** version 3.4.3 is a beta release candidate. Its
 > automated source, executable, and extracted-ZIP tests pass, but real
 > Windows 10 and multi-computer round trips are still being collected. Keep an
 > independent copy of irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.2 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.2)
+### [Download Codex Lifeboat 3.4.3 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.3)
 
 On the release page, download only:
 
@@ -156,7 +156,7 @@ mirroring, per-chat and per-project decisions, destination-only project retentio
 archive and recoverable removal, idempotent repeat restore, injected-failure rollback,
 and both GUI languages. See the
 [test results](tests/TEST-RESULTS.md). The source, packaged EXE, and freshly
-extracted portable ZIP pass 75/75 checks and 12/12 automated Windows compatibility
+extracted portable ZIP pass 76/76 checks and 12/12 automated Windows compatibility
 scenarios. Physical cross-computer testing remains visible in the
 [Phase 11 matrix](docs/PHASE-11-TEST-MATRIX.md).
 

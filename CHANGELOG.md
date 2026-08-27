@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.4.3 - 2026-08-27
+
 - Excluded the machine-specific `.codex/plugins` download cache and active plugin
   runtime from new backups; plugin settings and user skills remain portable.
 - Restore now ignores plugin-runtime payloads found in older backups and preserves

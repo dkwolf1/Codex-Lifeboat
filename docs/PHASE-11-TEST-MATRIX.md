@@ -43,8 +43,8 @@ performed and documented. Source tests alone do not close the Phase 11 gate.
 
 ## Current local packaged evidence
 
-On August 25, 2026, the source build, directly built 3.4.2 executable, and the
-executable launched from a freshly extracted portable ZIP each passed all 75
+On August 27, 2026, the source build, directly built 3.4.3 executable, and the
+executable launched from a freshly extracted portable ZIP each passed all 76
 checks and all 12 automated matrix scenarios on Windows 11. The generated EXE
 and ZIP also matched their published SHA-256 values. This is strong local
 evidence, but it does not replace the four physical cross-device tests above.

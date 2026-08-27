@@ -207,7 +207,7 @@ The automated matrix and dual Windows CI profiles are now active. See
 [`PHASE-11-TEST-MATRIX.md`](PHASE-11-TEST-MATRIX.md). Physical Windows 10/11,
 USB-removal, and release-candidate round-trip evidence remain pending.
 The source build, packaged executable, and freshly extracted portable ZIP pass
-the complete local 75-check suite and 12/12 automated scenarios on Windows 11.
+the complete local 76-check suite and 12/12 automated scenarios on Windows 11.
 
 ## Phase 12 — Public release and stable-release evidence
 
@@ -312,6 +312,6 @@ successful retry installs the complete new value, and no temporary metadata rema
 
 **Gate:** Passed. Cross-username semantic paths, divergence, metadata changes,
 invalid JSONL, read-only planning, transactional restore, and repeated idempotent
-restore are covered by the complete 75-check source and packaged test gates.
+restore are covered by the complete 76-check source and packaged test gates.
 
 Phase 13.6 (optional backup encryption) remains separate follow-up work.

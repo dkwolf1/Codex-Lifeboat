@@ -16,11 +16,11 @@ VSVersionInfo(
         [
           StringStruct(u'CompanyName', u'Codex Lifeboat community project'),
           StringStruct(u'FileDescription', u'Codex Lifeboat'),
-          StringStruct(u'FileVersion', u'3.4.2'),
+          StringStruct(u'FileVersion', u'3.4.3'),
           StringStruct(u'InternalName', u'Codex-Lifeboat'),
           StringStruct(u'OriginalFilename', u'Codex-Lifeboat.exe'),
           StringStruct(u'ProductName', u'Codex Lifeboat'),
-          StringStruct(u'ProductVersion', u'3.4.2')
+          StringStruct(u'ProductVersion', u'3.4.3')
         ]
       )
     ]),

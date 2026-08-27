@@ -202,7 +202,7 @@ Windows-CI-profielen is actief. Praktijktests op echte Windows 10/11-computers,
 USB-verwijdering tijdens schrijven en de release-candidate heen-en-weer-route
 staan nog open.
 De broncode, verpakte EXE en opnieuw uitgepakte portable ZIP slagen lokaal op
-Windows 11 voor alle 75 controles en 12/12 geautomatiseerde scenario's.
+Windows 11 voor alle 76 controles en 12/12 geautomatiseerde scenario's.
 
 ## Fase 12 — Publieke release en bewijs voor stabiele release
 
