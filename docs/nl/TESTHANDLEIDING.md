@@ -1,11 +1,10 @@
-# Openbare testhandleiding voor Codex Lifeboat 3.4.3
+# Compatibiliteitstesthandleiding voor Codex Lifeboat 3.4.4
 
 [English](../TESTING-GUIDE.md)
 
-Versie 3.4.3 is een openbare bèta/release candidate. Automatische tests simuleren
-Windows-gebruikers, paden, conflicten, fouten, rollback, beschadigde pakketten en
-heen-en-weer-routes. Gebruikerstests moeten aanvullend bewijs leveren met echte
-Windows 10/11-computers, USB-sticks en meerdere computers.
+Versie 3.4.4 is stabiel na geautomatiseerde tests en een geslaagde echte Windows 11-
+route tussen twee computers. Verdere gebruikerstests voegen dekking toe voor
+Windows 10, andere hardware, USB-onderbreking en meer computercombinaties.
 
 ## Voor het testen
 

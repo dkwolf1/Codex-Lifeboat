@@ -4,14 +4,15 @@
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Openbare testrelease:** versie 3.4.3 is een bèta/release candidate. De
-> geautomatiseerde bron-, EXE- en ZIP-tests slagen, maar praktijkresultaten van
-> Windows 10 en echte overdrachten tussen meerdere computers worden nog verzameld.
-> Bewaar onvervangbare gegevens ook apart en lees de [testhandleiding](TESTHANDLEIDING.md).
+> **Stabiele release:** versie 3.4.4 doorliep de geautomatiseerde bron-, EXE- en
+> ZIP-tests en een echte Windows 11-route van pc A naar pc B en terug naar pc A.
+> Back-up, onafhankelijke back-upcontrole, herstel, herstelcontrole en verder
+> werken in Codex slaagden. Bewaar onvervangbare gegevens ook apart en lees de
+> [testhandleiding](TESTHANDLEIDING.md).
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.3](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.3)
+### [Download Codex Lifeboat 3.4.4](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.4)
 
 Download op de releasepagina uitsluitend dit bestand:
 
@@ -136,8 +137,9 @@ en andere vertrouwelijke projectgegevens bevatten. Bewaar de USB-stick veilig.
 Codex Lifeboat is een onafhankelijk communityproject en geen officieel OpenAI-product.
 
 De broncode, verpakte EXE en opnieuw uitgepakte ZIP slagen voor 76/76 controles
-en 12/12 geautomatiseerde Windows-scenario's.
-Praktijktests staan in de [fase-11-matrix](../PHASE-11-TEST-MATRIX.md).
+en 12/12 geautomatiseerde Windows-scenario's. Ook een echte Windows 11-route van
+pc A naar pc B en terug, inclusief beide controles en het openen in Codex, slaagde.
+Overige hardwaretests staan in de [fase-11-matrix](../PHASE-11-TEST-MATRIX.md).
 
 Ontwikkelaars vinden de publicatiestappen in de
 [releasechecklist](RELEASE-CHECKLIST.md).

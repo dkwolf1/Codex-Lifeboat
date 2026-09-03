@@ -3,20 +3,21 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Public test: 3.4.3](https://img.shields.io/badge/public%20test-v3.4.3-f59e0b)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.3)
+[![Stable: 3.4.4](https://img.shields.io/badge/stable-v3.4.4-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.4)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Public testing release:** version 3.4.3 is a beta release candidate. Its
-> automated source, executable, and extracted-ZIP tests pass, but real
-> Windows 10 and multi-computer round trips are still being collected. Keep an
-> independent copy of irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
+> **Stable release:** version 3.4.4 completed the automated source, executable,
+> and extracted-ZIP suites plus a real Windows 11 PC A → PC B → PC A round trip.
+> Backup, independent backup verification, restore, post-restore verification,
+> and continued use in Codex all succeeded. Keep an independent copy of
+> irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.3 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.3)
+### [Download Codex Lifeboat 3.4.4 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.4)
 
 On the release page, download only:
 
@@ -157,8 +158,9 @@ archive and recoverable removal, idempotent repeat restore, injected-failure rol
 and both GUI languages. See the
 [test results](tests/TEST-RESULTS.md). The source, packaged EXE, and freshly
 extracted portable ZIP pass 76/76 checks and 12/12 automated Windows compatibility
-scenarios. Physical cross-computer testing remains visible in the
-[Phase 11 matrix](docs/PHASE-11-TEST-MATRIX.md).
+scenarios. A real Windows 11 PC A → PC B → PC A hand-off, including both verify
+operations and opening the restored data in Codex, also passed. Remaining optional
+hardware coverage is visible in the [Phase 11 matrix](docs/PHASE-11-TEST-MATRIX.md).
 
 ## For developers
 

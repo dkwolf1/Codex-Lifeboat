@@ -192,7 +192,7 @@ package validation succeeds.
 
 ## Phase 11 — Universal Windows test matrix
 
-**Status:** Automated gate complete in 3.4.0; physical trials pending
+**Status:** Stable gate complete in 3.4.4
 
 - Test Windows 10/11, different usernames, OneDrive redirection, drive changes,
   external/USB/UNC roots, long and Unicode paths, reparse points, nested roots,
@@ -201,29 +201,29 @@ package validation succeeds.
 - Test format 2.0 migration and repeated round trips.
 
 **Automated gate:** Source, packaged executable, and freshly extracted release
-candidate pass the complete simulated matrix. The physical-device gate remains open.
+pass the complete simulated matrix. The physical Windows 11 round-trip gate passed.
 
 The automated matrix and dual Windows CI profiles are now active. See
-[`PHASE-11-TEST-MATRIX.md`](PHASE-11-TEST-MATRIX.md). Physical Windows 10/11,
-USB-removal, and release-candidate round-trip evidence remain pending.
+[`PHASE-11-TEST-MATRIX.md`](PHASE-11-TEST-MATRIX.md). Windows 10 and physical
+USB-removal evidence remain pending additional compatibility coverage.
 The source build, packaged executable, and freshly extracted portable ZIP pass
 the complete local 76-check suite and 12/12 automated scenarios on Windows 11.
 
 ## Phase 12 — Public release and stable-release evidence
 
-**Status:** Public testing prepared in 3.4.0
+**Status:** Stable release prepared in 3.4.4
 
 - Complete English-first documentation and Dutch translation.
 - Publish signed artifacts when available, SHA-256, notices, limitations, and an
   operator-friendly migration guide.
 - Run a multi-user Windows release-candidate trial and collect sanitized results.
 
-**Gate:** Publish v4.0.0 only after independent round-trip recovery evidence is
-complete and no safety-critical issue remains open.
+**Gate:** Passed in 3.4.4 after independent physical round-trip recovery evidence
+and no known safety-critical issue remained open.
 
-Version 3.4.0 is therefore prepared as a transparent pre-release, with English
-primary documentation, Dutch translation, SHA-256 assets, security reporting,
-known limitations, and a structured community compatibility-report form.
+Version 3.4.4 is published as stable with English primary documentation, Dutch
+translation, SHA-256 assets, security reporting, known limitations, and a
+structured community compatibility-report form.
 
 ## Phase 13 — Reliability and portability follow-up
 

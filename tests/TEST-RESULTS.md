@@ -1,12 +1,12 @@
-# Test results 3.4.3
+# Test results 3.4.4
 
-Date: August 27, 2026
+Date: September 2, 2026
 Platform: Windows 11 build environment; target compatibility Windows 10/11 x64
 
 ## Automated end-to-end test
 
 The complete 76-check phase-0-through-13.5 source suite was executed successfully.
-The 3.4.3 standalone executable and the executable started from a freshly extracted
+The 3.4.4 standalone executable and the executable started from a freshly extracted
 portable ZIP both passed the same 76-check packaged gate and the 12/12 automated
 Phase 11 matrix.
 
@@ -132,10 +132,11 @@ Phase 11 matrix.
 
 ## Phase 11 compatibility matrix
 
-All 12 simulated two-computer scenarios passed. Four real-hardware checks remain
-explicitly pending: a physical Windows 10 run, a second physical Windows 11 run,
-USB removal during writing, and the final release-candidate PC-A-to-PC-B-to-PC-A
-journey. See `docs/PHASE-11-TEST-MATRIX.md`.
+All 12 simulated two-computer scenarios passed. On September 2, 2026, the physical
+Windows 11 second-computer check and the complete PC-A-to-PC-B-to-PC-A journey also
+passed, including Verify backup, Verify restore, and continued use in Codex.
+A physical Windows 10 run and USB removal during writing remain pending additional
+coverage. See `docs/PHASE-11-TEST-MATRIX.md`.
 
 The synthetic fixture contains three database conversations (project-linked,
 projectless and pinned, and projectless and archived), active and archived

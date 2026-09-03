@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 3.4.4 - 2026-09-02
+
+- Promoted Codex Lifeboat to the first stable release after a successful physical
+  Windows 11 PC A → PC B → PC A hand-off.
+- Confirmed the complete real-world workflow: create backup, independently verify
+  backup, restore on the other computer, verify restore, open Codex, continue work,
+  return the updated backup, restore it on the original computer, and continue there.
+- Retained the conservative safety model, known limitations, and explicit pending
+  coverage for physical Windows 10 and USB-removal-during-write testing.
+- Made an inaccessible WindowsApps `winget.exe` alias non-blocking, as intended
+  for the best-effort online version check.
+- Changed tagged GitHub releases from pre-release to stable publication.
+
 ## 3.4.3 - 2026-08-27
 
 - Excluded the machine-specific `.codex/plugins` download cache and active plugin

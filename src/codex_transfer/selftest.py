@@ -3203,6 +3203,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         and progress_events[-1] == (1, 1, "Backup complete")
     )
     original_run_hidden = windows.run_hidden
+    original_path_is_file = Path.is_file
     try:
         windows.run_hidden = lambda *_args, **_kwargs: subprocess.CompletedProcess(
             args=[], returncode=0, stdout="Version: Unknown\n", stderr=""
@@ -3210,11 +3211,20 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         unknown_version = windows.latest_version_check(
             {"detected": True, "version": "26.818.5229.0"}
         )
+        Path.is_file = lambda _path: (_ for _ in ()).throw(
+            OSError(1920, "WindowsApps alias unavailable")
+        )
+        inaccessible_winget = windows.latest_version_check(
+            {"detected": True, "version": "26.818.5229.0"}
+        )
     finally:
+        Path.is_file = original_path_is_file
         windows.run_hidden = original_run_hidden
     unknown_version_does_not_warn = (
         unknown_version.get("checked") is False
         and unknown_version.get("isLatest") is None
+        and inaccessible_winget.get("checked") is False
+        and inaccessible_winget.get("isLatest") is None
     )
     usb_classification = (
         windows._include_as_usb_destination(windows.DRIVE_REMOVABLE, False)

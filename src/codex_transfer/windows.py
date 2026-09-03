@@ -287,7 +287,14 @@ def latest_version_check(installed: dict[str, Any]) -> dict[str, Any]:
     if os.name != "nt":
         return result
     winget = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WindowsApps" / "winget.exe"
-    command = str(winget) if winget.is_file() else "winget.exe"
+    try:
+        winget_available = winget.is_file()
+    except OSError:
+        # WindowsApps aliases can exist while their target is unavailable or
+        # access is denied. Online version detection is best-effort and must
+        # never block backup, restore, diagnostics, or the release self-test.
+        winget_available = False
+    command = str(winget) if winget_available else "winget.exe"
     try:
         completed = run_hidden(
             [

@@ -50,5 +50,4 @@ jobs:
             .\dist\SHA256.txt `
             --verify-tag `
             --notes-file $notes `
-            --prerelease `
             --title "Codex Lifeboat $env:GITHUB_REF_NAME"

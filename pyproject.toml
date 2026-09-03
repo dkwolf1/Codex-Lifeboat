@@ -1,6 +1,6 @@
 [project]
 name = "codex-lifeboat"
-version = "3.4.3"
+version = "3.4.4"
 description = "One-click Codex backup, restore and Windows PC migration utility"
 readme = "README.md"
 license = "MIT"
@@ -18,7 +18,7 @@ keywords = [
   "disaster-recovery",
 ]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Win32 (MS Windows)",
   "Intended Audience :: End Users/Desktop",
   "Operating System :: Microsoft :: Windows :: Windows 10",

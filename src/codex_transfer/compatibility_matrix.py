@@ -68,11 +68,21 @@ AUTOMATED_SCENARIOS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 )
 
 
-MANUAL_SCENARIOS: tuple[tuple[str, str], ...] = (
-    ("windows-10-real-device", "Run the packaged executable on a physical Windows 10 computer"),
-    ("windows-11-real-device", "Run the packaged executable on a second physical Windows 11 computer"),
-    ("usb-removal-during-write", "Remove a real USB drive during backup and confirm safe failure handling"),
-    ("release-candidate-round-trip", "Complete a real PC A to PC B to PC A release-candidate hand-off"),
+MANUAL_SCENARIOS: tuple[tuple[str, str, str, str | None], ...] = (
+    ("windows-10-real-device", "Run the packaged executable on a physical Windows 10 computer", "pending", None),
+    (
+        "windows-11-real-device",
+        "Run the packaged executable on a second physical Windows 11 computer",
+        "passed",
+        "Project-owner physical test completed 2026-09-02",
+    ),
+    ("usb-removal-during-write", "Remove a real USB drive during backup and confirm safe failure handling", "pending", None),
+    (
+        "release-candidate-round-trip",
+        "Complete a real PC A to PC B to PC A release-candidate hand-off",
+        "passed",
+        "Backup, Verify backup, Restore, Verify restore, and continued Codex use completed 2026-09-02",
+    ),
 )
 
 
@@ -102,7 +112,12 @@ def build_matrix(checks: dict[str, bool]) -> dict[str, Any]:
         "automatedPassed": sum(item["status"] == "passed" for item in automated),
         "automatedTotal": len(automated),
         "manual": [
-            {"id": scenario_id, "description": description, "status": "pending"}
-            for scenario_id, description in MANUAL_SCENARIOS
+            {
+                "id": scenario_id,
+                "description": description,
+                "status": status,
+                **({"evidence": evidence} if evidence else {}),
+            }
+            for scenario_id, description, status, evidence in MANUAL_SCENARIOS
         ],
     }

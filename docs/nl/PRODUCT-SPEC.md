@@ -12,8 +12,8 @@
 - Engels als hoofdtaal met volledige Nederlandse vertaling.
 - Gebruik zonder administratorrechten, Python of installatieprogramma.
 
-Versie 3.4.3 is een openbare bèta/release candidate totdat de resterende fysieke
-fase-11-tests zijn afgerond.
+Versie 3.4.4 is de stabiele release. De geautomatiseerde tests en een fysieke
+Windows 11-route van pc A naar pc B en terug, inclusief beide controles, slaagden.
 
 ## Gebruikersbelofte
 
@@ -66,7 +66,9 @@ overdraagbaar.
 
 ## Definitie van een stabiele release
 
-De bron-, verpakte-EXE- en portable-ZIP-matrices moeten slagen; echte Windows
-10/11- en A-naar-B-naar-A-tests leveren opgeschoond bewijs; er blijft geen kritisch
+De bron-, verpakte-EXE- en portable-ZIP-matrices moeten slagen; echte Windows 11-
+en A-naar-B-naar-A-tests leveren opgeschoond bewijs; er blijft geen kritisch
 veiligheidsprobleem open; Engelse en Nederlandse documentatie, hashes, licentie,
 notices, beperkingen en beveiligingsmelding worden samen gepubliceerd.
+Windows 10 en een fysieke USB-onderbreking blijven aanvullende compatibiliteitstests
+en blokkeren de stabiele Windows 11-release niet.

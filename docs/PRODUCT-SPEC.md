@@ -12,8 +12,8 @@
 - English primary interface and documentation with Dutch translation.
 - Operation without administrator rights, Python, or an installer.
 
-Version 3.4.3 is a public beta/release candidate until the remaining physical
-Phase 11 tests are complete.
+Version 3.4.4 is the stable release. The automated suites and a physical Windows 11
+PC A → PC B → PC A workflow, including both verification operations, passed.
 
 ## User promise
 
@@ -66,6 +66,8 @@ runtime state are excluded. Plugin configuration and user skills remain portable
 ## Definition of done for a stable release
 
 The automated source, packaged executable, and portable ZIP matrices must pass;
-physical Windows 10/11 and A-to-B-to-A trials must provide sanitized evidence; no
+physical Windows 11 and A-to-B-to-A trials must provide sanitized evidence; no
 safety-critical issue may remain open; English and Dutch documentation, checksums,
 license, notices, limitations, and security reporting must be published together.
+Windows 10 and physical USB-interruption tests remain additional compatibility
+coverage rather than blockers for the stable Windows 11 release.

@@ -82,12 +82,12 @@ herstelplan staan en aantoonbaar onder goedgekeurde beheerde roots vallen. Het
 programma mag nooit een volledig profiel, station, netwerkshare of willekeurige
 map scannen en opschonen.
 
-## Huidige afbakening van 3.4.3
+## Huidige afbakening van 3.4.4
 
-Release 3.4.3 bevat fasen 0–10.1 en betrouwbaarheidsfasen 13.1–13.5: draagbare
+Release 3.4.4 bevat fasen 0–10.1 en betrouwbaarheidsfasen 13.1–13.5: draagbare
 paden, permanente projectidentiteit, volledige lokale inventaris, back-uplijn,
 gecontroleerde locatiekoppeling, alleen-lezen vergelijking, transactionele
 projectspiegels, expliciete conflictkeuzes, diagnose, padaudit, Git-bewuste uitleg,
 atomische metadata en strikte prefix-chatuitbreiding. De automatische fase-11-
-matrix slaagt voor broncode, EXE en uitgepakte ZIP; praktijkbewijs en de stabiele-
-releasepoort staan nog open.
+matrix slaagt voor broncode, EXE en uitgepakte ZIP. Ook een fysieke Windows 11-route
+van pc A naar pc B en terug slaagde; daarmee is de stabiele-releasepoort gesloten.

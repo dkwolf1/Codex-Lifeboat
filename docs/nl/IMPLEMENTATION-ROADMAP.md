@@ -198,15 +198,15 @@ pakketvalidatie slaagt.
 candidate slagen voor de complete simulatiematrix. De praktijktestpoort blijft open.
 
 De geautomatiseerde matrix met twaalf gesimuleerde tweepc-scenario's en twee
-Windows-CI-profielen is actief. Praktijktests op echte Windows 10/11-computers,
-USB-verwijdering tijdens schrijven en de release-candidate heen-en-weer-route
-staan nog open.
+Windows-CI-profielen is actief. De fysieke Windows 11-test en de heen-en-weer-route
+tussen twee computers zijn op 2 september 2026 geslaagd. Windows 10 en
+USB-verwijdering tijdens schrijven blijven aanvullende compatibiliteitstests.
 De broncode, verpakte EXE en opnieuw uitgepakte portable ZIP slagen lokaal op
 Windows 11 voor alle 76 controles en 12/12 geautomatiseerde scenario's.
 
 ## Fase 12 — Publieke release en bewijs voor stabiele release
 
-**Status:** Openbare testrelease voorbereid in 3.4.0
+**Status:** Stabiele release voorbereid in 3.4.4
 
 - Engelse hoofddocumentatie en volledige Nederlandse vertaling afronden.
 - Ondertekende bestanden waar mogelijk, SHA-256, meldingen, beperkingen en een
@@ -214,11 +214,12 @@ Windows 11 voor alle 76 controles en 12/12 geautomatiseerde scenario's.
 - Een Windows-release candidate door meerdere gebruikers laten testen en
   opgeschoonde resultaten verzamelen.
 
-**Poort:** v4.0.0 verschijnt pas met onafhankelijk bewijs van volledige heen-en-weer-herstelbaarheid.
+**Poort:** Geslaagd in 3.4.4 met onafhankelijk fysiek bewijs van volledige
+heen-en-weer-herstelbaarheid en zonder bekend kritisch veiligheidsprobleem.
 
-Versie 3.4.0 verschijnt daarom als transparante pre-release met Engelse
-hoofddocumentatie, Nederlandse vertaling, SHA-256-bestanden, beveiligingsmelding,
-bekende grenzen en een vast formulier voor compatibiliteitsresultaten.
+Versie 3.4.4 verschijnt als stabiele release met Engelse hoofddocumentatie,
+Nederlandse vertaling, SHA-256-bestanden, beveiligingsmelding, bekende grenzen en
+een vast formulier voor compatibiliteitsresultaten.
 
 ## Fase 13 — Vervolg voor betrouwbaarheid en overdraagbaarheid
 

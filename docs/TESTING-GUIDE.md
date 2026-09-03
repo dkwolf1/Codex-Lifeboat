@@ -1,11 +1,10 @@
-# Public testing guide for Codex Lifeboat 3.4.3
+# Compatibility testing guide for Codex Lifeboat 3.4.4
 
 [Nederlandse vertaling](nl/TESTHANDLEIDING.md)
 
-Version 3.4.3 is a public beta/release candidate. Automated tests cover simulated
-Windows users, paths, conflicts, failures, rollback, package corruption, and
-round trips. Community testing is intended to add real Windows 10/11, USB, and
-multi-computer evidence.
+Version 3.4.4 is stable after automated tests and a successful real Windows 11
+two-computer round trip. Continued community testing adds Windows 10, more hardware,
+USB-interruption, and diverse multi-computer evidence.
 
 ## Before testing
 

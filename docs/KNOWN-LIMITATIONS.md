@@ -1,4 +1,4 @@
-# Known limitations of release 3.4.3
+# Known limitations of release 3.4.4
 
 1. There is no published stable import contract for the local Codex database.
    The assistant therefore inspects schemas and must be retested after major future
@@ -13,7 +13,7 @@
 6. Cloud-only conversations or projects absent from the local Codex profile can
    only be synchronized by Codex through the user's account.
 7. Format 2.4 records external project roots, permanent identities, the complete
-   local Codex inventory, and backup lineage. Release 3.4.3 implements reviewed
+   local Codex inventory, and backup lineage. Release 3.4.4 implements reviewed
    decisions for conversation conflicts, project conflicts, and destination-only
    projects, but it is still linear hand-off rather than concurrent cloud sync.
 8. Successful replacement and explicit project removal may retain same-volume
@@ -38,6 +38,6 @@
     normalization. Edited records, changed metadata, malformed JSONL, an empty
     rollout, destination-ahead history, and arbitrary divergence require an
     explicit user decision. Lifeboat does not perform a general-purpose chat merge.
-13. Version 3.4.3 is a public pre-release. Source, packaged-EXE, and extracted-ZIP
-    automation passes on Windows 11, but real Windows 10, second-computer,
-    USB-removal, and complete A-to-B-to-A evidence is still being collected.
+13. Version 3.4.4 is stable after automated source/EXE/ZIP testing and a successful
+    physical Windows 11 A-to-B-to-A hand-off. A physical Windows 10 run and removal
+    of a real USB drive during an active write are not yet documented.
