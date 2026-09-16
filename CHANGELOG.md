@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+## 3.4.5 - 2026-09-16
+
+- Added an early, read-only rollout preflight so missing, duplicate, or invalid
+  conversation files stop the backup before portable profile and project payloads
+  are copied.
+- Expanded rollout failure diagnostics with the exact thread ID, database path,
+  candidate source and package paths, collection, size, modification time, and
+  SHA-256, and surfaced the retained JSON report path in the error message.
+- Duplicate rollouts now continue only when one candidate uniquely matches both
+  the snapshot database path and the expected active or archived collection.
+  Identical and divergent alternatives are retained as hashed, non-restorable
+  evidence under `codex/unreferenced-rollouts` and recorded in a resolution report.
+- The independent validator now verifies the canonical rollout reference, every
+  preserved non-canonical rollout, its embedded thread ID, and the declared
+  resolution counts.
+- Shortened temporary package directories to `.clb-<12 characters>` so staging
+  consumes substantially less of the Windows path-length budget.
+- The GUI now always asks the user to choose the destination, including when
+  exactly one removable drive is detected.
+- Added a destination path-budget preflight for both the selection screen and
+  backup engine. It accounts for the Windows long-path setting, the final backup
+  name, staging name, copied payload paths, and per-component filesystem limits;
+  unsafe required-payload destinations are rejected before bulk copying, while
+  cache-only overages follow the reconstructable-cache warning policy.
+- Copy failures are now tolerated only for reconstructable `.pyc`, `.pyo`, and
+  files below `__pycache__`. Each skipped file and exact error is recorded in
+  `reports/skipped-python-cache.json`, and the GUI marks the valid backup as
+  completed with warnings. Every normal source file remains fail-closed.
+- Failed staging directories now contain `INCOMPLETE.json` with the failed phase,
+  cause, staged file/byte counts, and available diagnostic reports. Automatic USB
+  discovery accepts only finalized packages with `backupComplete: true` and never
+  offers `.clb-*` or explicitly incomplete directories for restore.
+- Expanded regression coverage for the exact 259/260/261 path boundaries, the
+  short staging name, mandatory destination prompting with one USB drive, rollout
+  resolution, cache-only copy tolerance, strict normal-file failures, incomplete
+  package discovery, and byte-for-byte source immutability.
+- Reworked the main window into a task-focused professional layout with genuine
+  Home, Backups, Restore, Recovery, and Diagnostics pages, a five-stage operation
+  view, and collapsible technical details. Navigation never starts an operation.
+- Added stable, monotonic overall progress with separate stage status, processed
+  files or bytes, elapsed time, estimated time remaining, and throughput. Work
+  without a measurable total now keeps completed progress visible instead of
+  resetting or switching the bar into a flickering animation.
+
 ## 3.4.4 - 2026-09-02
 
 - Promoted Codex Lifeboat to the first stable release after a successful physical

@@ -22,6 +22,21 @@ FILE_SHARE_WRITE = 0x00000002
 OPEN_EXISTING = 3
 
 
+def long_paths_enabled() -> bool | None:
+    """Return the machine-wide Win32 long-path setting, or None if unavailable."""
+    if os.name != "nt":
+        return None
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\FileSystem",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "LongPathsEnabled")
+            return int(value) == 1
+    except (OSError, TypeError, ValueError):
+        return None
+
+
 def launched_from_compressed_folder(executable: Path | None = None) -> bool:
     """Return true for Windows Explorer's temporary run-from-ZIP extraction."""
     executable = (executable or Path(sys.executable)).resolve(strict=False)
@@ -347,6 +362,18 @@ def latest_version_check(installed: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def completed_backup_package(path: Path) -> bool:
+    """Return true only for a finalized package that may be offered for restore."""
+    if path.name.casefold().startswith(".clb-") or (path / "INCOMPLETE.json").exists():
+        return False
+    manifest = path / "manifest" / "package.json"
+    try:
+        value = json.loads(manifest.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return bool(value.get("backupComplete") is True)
+
+
 def detect_backup_packages() -> list[Path]:
     packages: list[Path] = []
     for drive in removable_drives():
@@ -359,7 +386,9 @@ def detect_backup_packages() -> list[Path]:
             )
             for pattern in patterns:
                 for manifest in drive.glob(pattern):
-                    packages.append(manifest.parent.parent)
+                    package = manifest.parent.parent
+                    if completed_backup_package(package):
+                        packages.append(package)
         except OSError:
             continue
     unique = {str(path.resolve(strict=False)).lower(): path for path in packages}

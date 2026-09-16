@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
@@ -19,6 +20,9 @@ HARDENED_STORES = (
     "external location mappings",
     "restore journals",
 )
+
+_WINDOWS_REPLACE_RETRY_CODES = {5, 32, 33}
+_WINDOWS_REPLACE_ATTEMPTS = 8
 
 
 def _temporary_path(path: Path) -> Path:
@@ -40,6 +44,24 @@ def _sync_parent(path: Path) -> None:
         pass
     finally:
         os.close(descriptor)
+
+
+def _replace(source: Path, target: Path) -> None:
+    """Retry brief Windows scanner/indexer locks without hiding real failures."""
+
+    for attempt in range(_WINDOWS_REPLACE_ATTEMPTS):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError as exc:
+            retryable = (
+                os.name == "nt"
+                and getattr(exc, "winerror", None) in _WINDOWS_REPLACE_RETRY_CODES
+                and attempt + 1 < _WINDOWS_REPLACE_ATTEMPTS
+            )
+            if not retryable:
+                raise
+            time.sleep(min(0.025 * (2**attempt), 0.25))
 
 
 def write_text(
@@ -64,7 +86,7 @@ def write_text(
             raise OSError(f"Temporary metadata verification failed: {path.name}")
         if validate:
             validate(persisted)
-        os.replace(temporary, path)
+        _replace(temporary, path)
         _sync_parent(path)
     finally:
         try:
