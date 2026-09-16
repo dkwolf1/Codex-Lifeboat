@@ -3,13 +3,13 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Stable: 3.4.4](https://img.shields.io/badge/stable-v3.4.4-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.4)
+[![Stable: 3.4.5](https://img.shields.io/badge/stable-v3.4.5-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.5)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Stable release:** version 3.4.4 completed the automated source, executable,
+> **Stable release:** version 3.4.5 completed the automated source, executable,
 > and extracted-ZIP suites plus a real Windows 11 PC A → PC B → PC A round trip.
 > Backup, independent backup verification, restore, post-restore verification,
 > and continued use in Codex all succeeded. Keep an independent copy of
@@ -17,7 +17,7 @@
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.4 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.4)
+### [Download Codex Lifeboat 3.4.5 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.5)
 
 On the release page, download only:
 
@@ -44,6 +44,8 @@ It includes:
 
 - Complete project directories, including `.git`, `.env`, and uncommitted files
 - Active and archived local conversations
+- Conservative duplicate-rollout recovery using the unique database-backed
+  active/archive path, while retaining every alternative as non-restorable evidence
 - Project-to-conversation links and locally available attachments
 - Skills and portable Codex configuration
 - Consistent SQLite snapshots and SHA-256 integrity validation
@@ -57,8 +59,19 @@ It includes:
 - Transactional, hash-verified project replacement without stale overlay files
 - A destination safety copy and automatic rollback on failure
 - A visual backup summary showing exactly what was protected and verified
+- A five-stage operation view with monotonic progress, current work, processed
+  files or bytes, elapsed time, estimated remaining time, and throughput
+- Separate Home, Backups, Restore, Recovery, and Diagnostics pages; navigation
+  never starts a backup, restore, cleanup, or system check
+- Collapsible technical details, keeping the main workflow clear for non-technical users
 - A pre-backup inventory with every project selected by default, showing its path,
   file count, size, and largest folders before anything is copied
+- An explicit destination picker on every backup, even when one USB drive is found
+- A Windows path-length preflight that takes the short staging directory, final
+  backup name, selected payload, long-path setting, and filename limits into account
+- Narrow copy-error tolerance for reconstructable Python bytecode cache only;
+  skipped cache files remain visible as warnings while ordinary files stay mandatory
+- Clearly marked incomplete staging evidence that is never offered as a restore source
 - Optional whole-project exclusion while conversations and Codex settings remain protected
 - Managed recovery points with disk usage and a two-valid-point retention policy
 - A read-only diagnostics center with clear pass, notice, and failure results
@@ -91,12 +104,19 @@ Plugin configuration and user-created skills remain included.
 4. Choose **Create complete backup**.
 5. Review the inventory. Everything is selected by default; exclude a project only
    when its files do not need to be recoverable from this backup.
-6. Choose **Verify backup** when creation is complete.
+6. Choose the USB drive or destination folder when prompted.
+7. Choose **Verify backup** when creation is complete.
 
 Creation reads each payload once to write its SHA-256 and then performs fast
 database, manifest, path, size, and lineage-structure checks. **Verify backup** is
 the separate independent full reread, so normal creation does not duplicate the
 slowest I/O work.
+
+Windows long-path support is not mandatory when every selected path fits safely.
+If it is disabled or unavailable and a required projected path reaches the classic
+260-character boundary, Lifeboat asks for a shorter destination before bulk copying.
+An overlong reconstructable Python-cache path does not block the core backup: if
+Windows rejects that cache copy, Lifeboat records it and completes with warnings.
 
 ## Restore on the new computer
 

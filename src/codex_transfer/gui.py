@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import os
 import queue
+import re
 import tempfile
 import threading
+import time
 import traceback
 from pathlib import Path
 import tkinter as tk
@@ -12,6 +14,38 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import atomic_io, backup, diagnostics, location_mapper, recovery, restore, restore_plan, windows
 from .validate import validate
+
+
+PROGRESS_STAGE_RANGES = ((0, 15), (15, 48), (48, 62), (62, 94), (94, 100))
+
+
+def weighted_operation_progress(
+    previous: float, stage: int, current: int, total: int
+) -> float:
+    """Return stable overall progress without moving backwards between phases."""
+    start, end = PROGRESS_STAGE_RANGES[max(0, min(stage, 4))]
+    fraction = min(max(current, 0) / total, 1.0) if total > 0 else 0.0
+    candidate = start + ((end - start) * fraction)
+    return min(100.0, max(float(previous), candidate))
+
+
+def backup_destination_initial_directory(
+    drives: list[Path], fallback: Path
+) -> str:
+    """Suggest the conventional folder without bypassing user confirmation."""
+    return str(drives[0] / "Codex Backups") if len(drives) == 1 else str(fallback)
+
+
+def ask_backup_destination(parent, title: str, initial_directory: str) -> str:
+    """Keep the native destination prompt behind a small testable boundary."""
+    return str(
+        filedialog.askdirectory(
+            title=title,
+            initialdir=initial_directory,
+            parent=parent,
+        )
+        or ""
+    )
 
 
 TEXT = {
@@ -30,6 +64,18 @@ TEXT = {
         "overview_subtitle": "Uw Codex-gegevens zijn klaar om veilig mee te nemen",
         "nav_backup": "Back-up",
         "nav_restore": "Herstellen",
+        "backup_tab_title": "Back-ups",
+        "backup_tab_subtitle": "Kies wat u wilt meenemen en maak daarna een gecontroleerde back-up.",
+        "restore_tab_title": "Herstellen",
+        "restore_tab_subtitle": "Controleer een back-up en zet deze veilig terug op deze computer.",
+        "recovery_tab_subtitle": "Bekijk lokale veiligheidskopieën die vóór herstel zijn gemaakt.",
+        "diagnostics_tab_subtitle": "Controleer deze computer en maak zo nodig een geanonimiseerd rapport.",
+        "open_backup_tab": "Naar back-ups",
+        "open_restore_tab": "Naar herstellen",
+        "open_recovery": "Herstelpunten bekijken",
+        "run_diagnostics": "Systeemcontrole uitvoeren",
+        "recovery_tab_help": "Herstelpunten zijn lokale veiligheidskopieën van de toestand vóór een herstelactie. U kunt ze hier bekijken en oudere, volledig gecontroleerde punten veilig opruimen.",
+        "diagnostics_tab_help": "De diagnose verandert niets. Ze controleert Windows, Codex-gegevens, de database, vrije ruimte en herstelstatus en kan een privacyvriendelijk supportrapport maken.",
         "backup_description": "Bewaar uw projecten, chats en instellingen",
         "restore_description": "Ga op deze computer verder vanuit een back-up",
         "latest_backup": "Laatste back-up",
@@ -115,6 +161,7 @@ TEXT = {
         "warning_missing_attachments": "{count} historische bijlagen zijn niet meer lokaal aanwezig",
         "warning_links": "{count} links of reparsepunten zijn veilig overgeslagen",
         "warning_missing_projects": "{count} geregistreerde projectlocaties bestaan niet meer",
+        "warning_python_cache": "{count} reconstrueerbare Python-cachebestanden konden niet worden gekopieerd en zijn veilig overgeslagen",
         "warning_other": "{count} overige aandachtspunten staan in het volledige rapport",
         "full_report": "Volledig rapport: {path}",
         "result_location": "Back-uplocatie: {path}",
@@ -174,7 +221,37 @@ TEXT = {
         "diagnostics_atomic_metadata": "Atomair opslaan van metadata",
         "ready": "Gereed",
         "working": "Bezig… sluit dit venster niet.",
+        "operation_idle_title": "Klaar voor een veilige overdracht",
+        "operation_idle_subtitle": "Maak een back-up of zet er één terug wanneer u wilt.",
+        "operation_backup_title": "Back-up wordt gemaakt",
+        "operation_verify_title": "Back-up wordt gecontroleerd",
+        "operation_restore_title": "Back-up wordt teruggezet",
+        "operation_restore_verify_title": "Herstel wordt gecontroleerd",
+        "operation_other_title": "Controle wordt uitgevoerd",
+        "source_unchanged": "Uw brongegevens blijven tijdens deze bewerking ongewijzigd.",
+        "overall_progress": "Totale voortgang",
+        "current_task": "Nu bezig",
+        "elapsed": "Verstreken",
+        "remaining": "Resterend",
+        "throughput": "Snelheid",
+        "calculating": "Berekenen…",
+        "stage_discover": "Inventariseren",
+        "stage_copy": "Projecten kopiëren",
+        "stage_chats": "Chats beschermen",
+        "stage_verify": "Controleren",
+        "stage_finish": "Afronden",
+        "technical_details": "Technische details",
+        "show_details": "Technische details tonen",
+        "hide_details": "Technische details verbergen",
+        "files_progress": "{current} van {total}",
+        "bytes_progress": "{current} van {total}",
         "choose_destination": "Kies USB-schijf of doelmap voor de back-up",
+        "path_budget_error": "Deze doelmap is niet veilig voor alle back-upbestanden.\n\n{reason}\nBron: {source}\nVerwacht doelpad: {target}\nWindows-ondersteuning voor lange paden: {long_paths}\n\nKies een kortere doelmap.",
+        "path_budget_path_reason": "Het langste verwachte pad is {length} tekens (klassieke Windows-grens: {limit}).",
+        "path_budget_component_reason": "Een map- of bestandsnaam is {length} tekens (grens: {limit}).",
+        "long_paths_enabled": "ingeschakeld",
+        "long_paths_disabled": "uitgeschakeld",
+        "long_paths_unknown": "onbekend",
         "choose_backup": "Kies de Codex-PortableBackup-map",
         "confirm_backup": "Codex moet volledig zijn afgesloten. Wilt u een volledige back-up van uw projecten, chats en instellingen maken in:\n\n{path}?",
         "confirm_backup_selection": "Codex moet volledig zijn afgesloten. Maak de geselecteerde back-up in:\n\n{path}\n\nProjecten: {projects}\nBestanden: ongeveer {files}\nOmvang: ongeveer {size}?",
@@ -255,6 +332,18 @@ TEXT = {
         "overview_subtitle": "Your Codex data is ready to travel safely",
         "nav_backup": "Backup",
         "nav_restore": "Restore",
+        "backup_tab_title": "Backups",
+        "backup_tab_subtitle": "Choose what to take with you, then create a verified backup.",
+        "restore_tab_title": "Restore",
+        "restore_tab_subtitle": "Verify a backup and restore it safely on this computer.",
+        "recovery_tab_subtitle": "Review local safety copies created before a restore.",
+        "diagnostics_tab_subtitle": "Check this computer and create an anonymized report if needed.",
+        "open_backup_tab": "Open backups",
+        "open_restore_tab": "Open restore",
+        "open_recovery": "View recovery points",
+        "run_diagnostics": "Run system check",
+        "recovery_tab_help": "Recovery points are local safety copies of the state before a restore. Review them here and safely clean older, fully verified points.",
+        "diagnostics_tab_help": "Diagnostics changes nothing. It checks Windows, Codex data, the database, free space, and restore readiness and can create a privacy-safe support report.",
         "backup_description": "Protect your projects, chats, and settings",
         "restore_description": "Continue on this computer from a backup",
         "latest_backup": "Latest backup",
@@ -340,6 +429,7 @@ TEXT = {
         "warning_missing_attachments": "{count} historical attachments are no longer available locally",
         "warning_links": "{count} links or reparse points were safely skipped",
         "warning_missing_projects": "{count} registered project locations no longer exist",
+        "warning_python_cache": "{count} reconstructable Python cache files could not be copied and were safely skipped",
         "warning_other": "{count} other notices are recorded in the full report",
         "full_report": "Full report: {path}",
         "result_location": "Backup location: {path}",
@@ -399,7 +489,37 @@ TEXT = {
         "diagnostics_atomic_metadata": "Atomic metadata storage",
         "ready": "Ready",
         "working": "Working… do not close this window.",
+        "operation_idle_title": "Ready for a safe transfer",
+        "operation_idle_subtitle": "Create or restore a backup whenever you are ready.",
+        "operation_backup_title": "Backup in progress",
+        "operation_verify_title": "Verifying backup",
+        "operation_restore_title": "Restoring backup",
+        "operation_restore_verify_title": "Verifying restore",
+        "operation_other_title": "Running system check",
+        "source_unchanged": "Your source data remains unchanged during this operation.",
+        "overall_progress": "Overall progress",
+        "current_task": "Current",
+        "elapsed": "Elapsed",
+        "remaining": "Remaining",
+        "throughput": "Throughput",
+        "calculating": "Calculating…",
+        "stage_discover": "Discover",
+        "stage_copy": "Copy projects",
+        "stage_chats": "Protect chats",
+        "stage_verify": "Verify",
+        "stage_finish": "Finish",
+        "technical_details": "Technical details",
+        "show_details": "Show technical details",
+        "hide_details": "Hide technical details",
+        "files_progress": "{current} of {total}",
+        "bytes_progress": "{current} of {total}",
         "choose_destination": "Select USB drive or backup destination",
+        "path_budget_error": "This destination is unsafe for one or more backup files.\n\n{reason}\nSource: {source}\nProjected destination: {target}\nWindows long-path support: {long_paths}\n\nChoose a shorter destination folder.",
+        "path_budget_path_reason": "The longest projected path is {length} characters (classic Windows limit: {limit}).",
+        "path_budget_component_reason": "A folder or file name is {length} characters (limit: {limit}).",
+        "long_paths_enabled": "enabled",
+        "long_paths_disabled": "disabled",
+        "long_paths_unknown": "unknown",
         "choose_backup": "Select the Codex-PortableBackup folder",
         "confirm_backup": "Codex must be completely closed. Create a full backup of your projects, chats, and settings in:\n\n{path}?",
         "confirm_backup_selection": "Codex must be completely closed. Create the selected backup in:\n\n{path}\n\nProjects: {projects}\nFiles: approximately {files}\nSize: approximately {size}?",
@@ -544,8 +664,12 @@ def _backup_result_model(
         )
         for item in warnings
     )
+    skipped_python_cache = int(
+        counts.get("skippedReconstructablePythonCache", 0)
+    )
     categorized = min(
-        len(warnings), missing_attachments + link_warnings + missing_projects
+        len(warnings),
+        missing_attachments + link_warnings + missing_projects + skipped_python_cache,
     )
     valid = bool(
         validation.get("valid") if validation is not None else package.get("backupComplete")
@@ -559,6 +683,7 @@ def _backup_result_model(
             "missingAttachments": missing_attachments,
             "links": link_warnings,
             "missingProjects": missing_projects,
+            "pythonCache": skipped_python_cache,
             "other": max(len(warnings) - categorized, 0),
         },
         "metrics": {
@@ -681,6 +806,7 @@ class BackupResultDialog(tk.Toplevel):
             ("missingAttachments", "warning_missing_attachments"),
             ("links", "warning_links"),
             ("missingProjects", "warning_missing_projects"),
+            ("pythonCache", "warning_python_cache"),
             ("other", "warning_other"),
         ):
             count = int(model["warnings"].get(key, 0))
@@ -1979,15 +2105,16 @@ class DiagnosticsDialog(tk.Toplevel):
 
 
 class TransferApp(tk.Tk):
-    BG = "#F3F6FA"
+    BG = "#F7F8FA"
     CARD = "#FFFFFF"
     NAVY = "#102A43"
+    NAVY_DARK = "#0A1F33"
     BLUE = "#1769E0"
-    AMBER = "#F4A62A"
-    TEXT_COLOR = "#1B2733"
-    MUTED = "#60758A"
-    BORDER = "#D9E2EC"
-    SUCCESS = "#18A66A"
+    AMBER = "#F5A623"
+    TEXT_COLOR = "#182433"
+    MUTED = "#5F7185"
+    BORDER = "#D8E0E8"
+    SUCCESS = "#129B67"
 
     def __init__(self) -> None:
         super().__init__()
@@ -1999,14 +2126,25 @@ class TransferApp(tk.Tk):
         self.last_version_check: dict | None = None
         self.last_result_model: dict | None = None
         self.last_result_verified = False
-        self.geometry("1180x800")
-        self.minsize(980, 700)
+        self.current_tab = "overview"
+        self.operation_key = "idle"
+        self.operation_started_at: float | None = None
+        self.phase_started_at: float | None = None
+        self.phase_signature = ""
+        self.operation_progress = 0.0
+        self.last_progress_current = 0
+        self.last_progress_total = 0
+        self.last_progress_message = ""
+        self.details_visible = False
+        self.geometry("1320x820")
+        self.minsize(1080, 720)
         self.configure(background=self.BG)
         self._configure_styles()
         self._build()
         self._translate()
         self.bind("<Map>", self._restore_from_taskbar, add="+")
         self.after(100, self._drain_messages)
+        self.after(500, self._tick_operation_clock)
         self.after(1000, self._refresh_drives)
         if self.launch_blocked:
             for button in self.action_buttons:
@@ -2029,6 +2167,7 @@ class TransferApp(tk.Tk):
         except tk.TclError:
             pass
         style.configure("App.TFrame", background=self.BG)
+        style.configure("Topbar.TFrame", background=self.NAVY_DARK)
         style.configure(
             "DialogTitle.TLabel", background=self.BG, foreground=self.NAVY,
             font=("Segoe UI", 20, "bold")
@@ -2144,8 +2283,8 @@ class TransferApp(tk.Tk):
         )
         style.configure(
             "Lifeboat.Horizontal.TProgressbar", background=self.SUCCESS,
-            troughcolor="#DCE4EC", bordercolor="#DCE4EC", lightcolor=self.SUCCESS,
-            darkcolor=self.SUCCESS, thickness=10
+            troughcolor="#E1E7ED", bordercolor="#E1E7ED", lightcolor=self.SUCCESS,
+            darkcolor=self.SUCCESS, thickness=14
         )
         style.configure(
             "Language.TCombobox", fieldbackground="#FFFFFF", background="#FFFFFF",
@@ -2153,67 +2292,77 @@ class TransferApp(tk.Tk):
         )
 
     def _build(self) -> None:
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
 
-        sidebar = tk.Frame(self, bg=self.NAVY, width=244)
-        sidebar.grid(row=0, column=0, sticky="ns")
-        sidebar.grid_propagate(False)
-        sidebar.columnconfigure(0, weight=1)
+        topbar = tk.Frame(self, bg=self.NAVY_DARK, height=76)
+        topbar.grid(row=0, column=0, sticky="ew")
+        topbar.grid_propagate(False)
+        topbar.columnconfigure(7, weight=1)
 
         logo = tk.Canvas(
-            sidebar, width=62, height=62, bg=self.NAVY,
+            topbar, width=44, height=44, bg=self.NAVY_DARK,
             highlightthickness=0, borderwidth=0
         )
-        logo.create_oval(5, 5, 57, 57, fill="#FFFFFF", outline="")
-        logo.create_rectangle(25, 2, 37, 22, fill=self.AMBER, outline="")
-        logo.create_rectangle(25, 40, 37, 60, fill=self.AMBER, outline="")
-        logo.create_rectangle(2, 25, 22, 37, fill=self.AMBER, outline="")
-        logo.create_rectangle(40, 25, 60, 37, fill=self.AMBER, outline="")
-        logo.create_oval(20, 20, 42, 42, fill=self.NAVY, outline="")
-        logo.grid(row=0, column=0, pady=(28, 10))
+        logo.create_oval(4, 4, 40, 40, fill="#FFFFFF", outline="")
+        logo.create_rectangle(18, 1, 26, 15, fill=self.AMBER, outline="")
+        logo.create_rectangle(18, 29, 26, 43, fill=self.AMBER, outline="")
+        logo.create_rectangle(1, 18, 15, 26, fill=self.AMBER, outline="")
+        logo.create_rectangle(29, 18, 43, 26, fill=self.AMBER, outline="")
+        logo.create_oval(14, 14, 30, 30, fill=self.NAVY_DARK, outline="")
+        logo.grid(row=0, column=0, rowspan=2, padx=(24, 10), pady=14)
         self.title_label = tk.Label(
-            sidebar, bg=self.NAVY, fg="#FFFFFF", font=("Segoe UI", 15, "bold"),
-            anchor="center"
+            topbar, bg=self.NAVY_DARK, fg="#FFFFFF",
+            font=("Segoe UI", 15, "bold"), anchor="w"
         )
-        self.title_label.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 24))
-        self.subtitle_label = tk.Label(sidebar, text="", bg=self.NAVY)
+        self.title_label.grid(row=0, column=1, sticky="sw", pady=(11, 0))
+        self.subtitle_label = tk.Label(
+            topbar, bg=self.NAVY_DARK, fg="#9FB4C8",
+            font=("Segoe UI", 8), anchor="w"
+        )
+        self.subtitle_label.grid(row=1, column=1, sticky="nw", pady=(0, 10))
+        self.sidebar_note = tk.Label(topbar, bg=self.NAVY_DARK)
 
-        def nav_button(row: int, command) -> tk.Button:
+        def nav_button(column: int, command) -> tk.Button:
             button = tk.Button(
-                sidebar, command=command, anchor="w", relief="flat", borderwidth=0,
-                bg=self.NAVY, fg="#DCE8F4", activebackground="#1E4668",
-                activeforeground="#FFFFFF", disabledforeground="#8297AA",
-                font=("Segoe UI", 10, "bold"), padx=24, pady=12,
+                topbar, command=command, relief="flat", borderwidth=0,
+                bg=self.NAVY_DARK, fg="#DCE8F4", activebackground="#173955",
+                activeforeground="#FFFFFF", disabledforeground="#71879A",
+                font=("Segoe UI", 9, "bold"), padx=12, pady=10,
                 cursor="hand2"
             )
-            button.grid(row=row, column=0, sticky="ew", padx=10, pady=2)
+            button.grid(row=0, column=column, rowspan=2, sticky="ns", padx=1, pady=10)
             return button
 
-        self.overview_button = nav_button(2, lambda: self.main_panel.focus_set())
-        self.nav_backup_button = nav_button(3, self._backup)
-        self.nav_restore_button = nav_button(4, self._restore)
-        self.nav_recovery_button = nav_button(5, self._manage_recovery)
-        self.nav_diagnostics_button = nav_button(6, self._diagnostics)
-        self.overview_button.configure(bg="#1E4668", fg="#FFFFFF")
+        self.overview_button = nav_button(2, lambda: self._show_tab("overview"))
+        self.nav_backup_button = nav_button(3, lambda: self._show_tab("backup"))
+        self.nav_restore_button = nav_button(4, lambda: self._show_tab("restore"))
+        self.nav_recovery_button = nav_button(5, lambda: self._show_tab("recovery"))
+        self.nav_diagnostics_button = nav_button(6, lambda: self._show_tab("diagnostics"))
+        self.overview_button.configure(bg="#173955", fg="#FFFFFF")
 
-        self.sidebar_note = tk.Label(
-            sidebar, bg=self.NAVY, fg="#9FB4C8", justify="left", wraplength=196,
-            font=("Segoe UI", 8)
+        self.language_label = tk.Label(
+            topbar, bg=self.NAVY_DARK, fg="#DCE8F4", font=("Segoe UI", 9)
         )
-        self.sidebar_note.grid(row=7, column=0, sticky="sw", padx=24, pady=22)
-        sidebar.rowconfigure(7, weight=1)
+        self.language_label.grid(row=0, column=8, rowspan=2, padx=(12, 7))
+        self.language_box = ttk.Combobox(
+            topbar, state="readonly", width=11,
+            values=("English", "Nederlands"), style="Language.TCombobox"
+        )
+        self.language_box.current(0 if self.language.get() == "en" else 1)
+        self.language_box.grid(row=0, column=9, rowspan=2, padx=(0, 22))
+        self.language_box.bind("<<ComboboxSelected>>", self._change_language)
 
-        self.main_panel = ttk.Frame(self, style="App.TFrame", padding=(28, 22, 28, 20))
-        self.main_panel.grid(row=0, column=1, sticky="nsew")
+        self.main_panel = ttk.Frame(self, style="App.TFrame", padding=(28, 20, 28, 20))
+        self.main_panel.grid(row=1, column=0, sticky="nsew")
         self.main_panel.columnconfigure(0, weight=1)
         self.main_panel.rowconfigure(7, weight=1)
 
         header = ttk.Frame(self.main_panel, style="App.TFrame")
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         header.columnconfigure(0, weight=1)
         self.overview_title = ttk.Label(
-            header, style="DialogTitle.TLabel", font=("Segoe UI", 22, "bold")
+            header, style="DialogTitle.TLabel", font=("Segoe UI", 24, "bold")
         )
         self.overview_title.grid(row=0, column=0, sticky="w")
         self.overview_subtitle = ttk.Label(header, style="Body.TLabel")
@@ -2222,16 +2371,7 @@ class TransferApp(tk.Tk):
             header, bg="#E8F7EF", fg="#128250", font=("Segoe UI", 9, "bold"),
             padx=12, pady=6
         )
-        self.header_status.grid(row=0, column=1, rowspan=2, padx=(12, 16))
-        self.language_label = ttk.Label(header, style="Body.TLabel")
-        self.language_label.grid(row=0, column=2, rowspan=2, padx=(0, 6))
-        self.language_box = ttk.Combobox(
-            header, state="readonly", width=11,
-            values=("English", "Nederlands"), style="Language.TCombobox"
-        )
-        self.language_box.current(0 if self.language.get() == "en" else 1)
-        self.language_box.grid(row=0, column=3, rowspan=2)
-        self.language_box.bind("<<ComboboxSelected>>", self._change_language)
+        self.header_status.grid(row=0, column=1, rowspan=2, padx=(12, 0))
 
         self.detection = ttk.LabelFrame(
             self.main_panel, padding=(16, 11), style="Card.TLabelframe"
@@ -2253,27 +2393,27 @@ class TransferApp(tk.Tk):
         )
         self.usb_value.grid(row=0, column=3, sticky="w", padx=(10, 0))
 
-        actions = ttk.Frame(self.main_panel, style="App.TFrame")
-        actions.grid(row=2, column=0, sticky="ew", pady=(0, 12))
-        actions.columnconfigure(0, weight=1)
-        actions.columnconfigure(1, weight=1)
+        self.actions_frame = ttk.Frame(self.main_panel, style="App.TFrame")
+        self.actions_frame.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        self.actions_frame.columnconfigure(0, weight=1)
+        self.actions_frame.columnconfigure(1, weight=1)
 
-        backup_card = tk.Frame(
-            actions, bg=self.NAVY, highlightbackground=self.NAVY,
-            highlightthickness=1, padx=22, pady=18
+        self.backup_card = tk.Frame(
+            self.actions_frame, bg=self.NAVY, highlightbackground=self.NAVY,
+            highlightthickness=1, padx=22, pady=15
         )
-        backup_card.grid(row=0, column=0, sticky="nsew", padx=(0, 7))
+        self.backup_card.grid(row=0, column=0, sticky="nsew", padx=(0, 7))
         self.backup_heading = tk.Label(
-            backup_card, bg=self.NAVY, fg="#FFFFFF", anchor="w",
+            self.backup_card, bg=self.NAVY, fg="#FFFFFF", anchor="w",
             font=("Segoe UI", 15, "bold")
         )
         self.backup_heading.pack(fill="x")
         self.backup_description = tk.Label(
-            backup_card, bg=self.NAVY, fg="#C9D8E8", anchor="w",
+            self.backup_card, bg=self.NAVY, fg="#C9D8E8", anchor="w",
             font=("Segoe UI", 9), pady=5
         )
         self.backup_description.pack(fill="x")
-        backup_actions = tk.Frame(backup_card, bg=self.NAVY)
+        backup_actions = tk.Frame(self.backup_card, bg=self.NAVY)
         backup_actions.pack(fill="x", pady=(10, 0))
         self.backup_button = ttk.Button(
             backup_actions, command=self._backup, style="HeroPrimary.TButton"
@@ -2287,22 +2427,22 @@ class TransferApp(tk.Tk):
         )
         self.verify_backup_button.pack(side="left", padx=(10, 0))
 
-        restore_card = tk.Frame(
-            actions, bg=self.CARD, highlightbackground=self.BORDER,
-            highlightthickness=1, padx=22, pady=18
+        self.restore_card = tk.Frame(
+            self.actions_frame, bg=self.CARD, highlightbackground=self.BORDER,
+            highlightthickness=1, padx=22, pady=15
         )
-        restore_card.grid(row=0, column=1, sticky="nsew", padx=(7, 0))
+        self.restore_card.grid(row=0, column=1, sticky="nsew", padx=(7, 0))
         self.restore_heading = tk.Label(
-            restore_card, bg=self.CARD, fg=self.NAVY, anchor="w",
+            self.restore_card, bg=self.CARD, fg=self.NAVY, anchor="w",
             font=("Segoe UI", 15, "bold")
         )
         self.restore_heading.pack(fill="x")
         self.restore_description = tk.Label(
-            restore_card, bg=self.CARD, fg=self.MUTED, anchor="w",
+            self.restore_card, bg=self.CARD, fg=self.MUTED, anchor="w",
             font=("Segoe UI", 9), pady=5
         )
         self.restore_description.pack(fill="x")
-        restore_actions = tk.Frame(restore_card, bg=self.CARD)
+        restore_actions = tk.Frame(self.restore_card, bg=self.CARD)
         restore_actions.pack(fill="x", pady=(10, 0))
         self.restore_button = ttk.Button(
             restore_actions, command=self._restore, style="CardAction.TButton"
@@ -2313,50 +2453,108 @@ class TransferApp(tk.Tk):
         )
         self.verify_restore_button.pack(side="left", padx=(10, 0))
 
-        metrics = ttk.Frame(self.main_panel, style="App.TFrame")
-        metrics.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        self.status_frame = tk.Frame(
+            self.main_panel, bg=self.CARD, highlightbackground=self.BORDER,
+            highlightthickness=1, padx=22, pady=16
+        )
+        self.status_frame.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        self.status_frame.columnconfigure(1, weight=1)
+        self.operation_title = tk.Label(
+            self.status_frame, bg=self.CARD, fg=self.NAVY, anchor="w",
+            font=("Segoe UI", 17, "bold")
+        )
+        self.operation_title.grid(row=0, column=0, columnspan=5, sticky="w")
+        self.operation_subtitle = tk.Label(
+            self.status_frame, bg=self.CARD, fg=self.MUTED, anchor="w",
+            font=("Segoe UI", 9)
+        )
+        self.operation_subtitle.grid(row=1, column=0, columnspan=5, sticky="w", pady=(2, 13))
+
+        self.stage_dots: list[tk.Label] = []
+        self.stage_labels: list[tk.Label] = []
+        for column in range(5):
+            self.status_frame.columnconfigure(column, weight=1)
+            dot = tk.Label(
+                self.status_frame, text=str(column + 1), bg="#EDF1F5", fg=self.MUTED,
+                width=3, pady=5, font=("Segoe UI", 9, "bold")
+            )
+            dot.grid(row=2, column=column, pady=(0, 4))
+            label = tk.Label(
+                self.status_frame, bg=self.CARD, fg=self.MUTED,
+                font=("Segoe UI", 9, "bold")
+            )
+            label.grid(row=3, column=column, pady=(0, 13))
+            self.stage_dots.append(dot)
+            self.stage_labels.append(label)
+
+        self.progress_percent = tk.Label(
+            self.status_frame, text="0%", bg=self.CARD, fg=self.NAVY,
+            font=("Segoe UI", 20, "bold"), anchor="w"
+        )
+        self.progress_percent.grid(row=4, column=0, sticky="w")
+        self.progress_measure = tk.Label(
+            self.status_frame, text="—", bg=self.CARD, fg=self.MUTED,
+            font=("Segoe UI", 9), anchor="e"
+        )
+        self.progress_measure.grid(row=4, column=1, columnspan=4, sticky="e")
+        self.progress = ttk.Progressbar(
+            self.status_frame, mode="determinate", maximum=100,
+            style="Lifeboat.Horizontal.TProgressbar"
+        )
+        self.progress.grid(row=5, column=0, columnspan=5, sticky="ew", pady=(6, 10))
+        self.status_dot = tk.Label(
+            self.status_frame, text="●", bg=self.CARD, fg=self.SUCCESS,
+            font=("Segoe UI", 10), borderwidth=0
+        )
+        self.status_dot.grid(row=6, column=0, sticky="w")
+        self.status_label = tk.Label(
+            self.status_frame, bg=self.CARD, fg=self.TEXT_COLOR,
+            font=("Segoe UI", 9, "bold"), anchor="w"
+        )
+        self.status_label.grid(row=6, column=0, columnspan=3, sticky="w", padx=(18, 0))
+        timing = tk.Frame(self.status_frame, bg=self.CARD)
+        timing.grid(row=6, column=3, columnspan=2, sticky="e")
+        self.elapsed_label = tk.Label(
+            timing, text="—", bg=self.CARD, fg=self.MUTED, font=("Segoe UI", 8)
+        )
+        self.elapsed_label.pack(side="left", padx=(0, 18))
+        self.remaining_label = tk.Label(
+            timing, text="—", bg=self.CARD, fg=self.MUTED, font=("Segoe UI", 8)
+        )
+        self.remaining_label.pack(side="left", padx=(0, 18))
+        self.throughput_label = tk.Label(
+            timing, text="—", bg=self.CARD, fg=self.MUTED, font=("Segoe UI", 8)
+        )
+        self.throughput_label.pack(side="left")
+
+        self.metrics_frame = ttk.Frame(self.main_panel, style="App.TFrame")
+        self.metrics_frame.grid(row=4, column=0, sticky="ew", pady=(0, 10))
         for column in range(3):
-            metrics.columnconfigure(column, weight=1)
+            self.metrics_frame.columnconfigure(column, weight=1)
 
         def metric_card(column: int):
             card = tk.Frame(
-                metrics, bg=self.CARD, highlightbackground=self.BORDER,
-                highlightthickness=1, padx=16, pady=12
+                self.metrics_frame, bg=self.CARD, highlightbackground=self.BORDER,
+                highlightthickness=1, padx=16, pady=10
             )
             card.grid(
                 row=0, column=column, sticky="nsew",
                 padx=(0 if column == 0 else 6, 0 if column == 2 else 6)
             )
             heading = tk.Label(
-                card, bg=self.CARD, fg=self.MUTED, anchor="w",
-                font=("Segoe UI", 8)
+                card, bg=self.CARD, fg=self.MUTED, anchor="w", font=("Segoe UI", 8)
             )
             heading.pack(fill="x")
             value = tk.Label(
                 card, bg=self.CARD, fg=self.NAVY, anchor="w",
-                font=("Segoe UI", 12, "bold")
+                font=("Segoe UI", 11, "bold")
             )
-            value.pack(fill="x", pady=(4, 0))
+            value.pack(fill="x", pady=(3, 0))
             return heading, value
 
         self.latest_heading, self.latest_value = metric_card(0)
         self.included_heading, self.included_value = metric_card(1)
         self.storage_heading, self.storage_value = metric_card(2)
-
-        status_frame = ttk.Frame(self.main_panel, style="App.TFrame")
-        status_frame.grid(row=4, column=0, sticky="ew", pady=(0, 8))
-        status_frame.columnconfigure(1, weight=1)
-        self.status_dot = tk.Label(
-            status_frame, text="●", bg=self.BG, fg=self.SUCCESS,
-            font=("Segoe UI", 10), borderwidth=0
-        )
-        self.status_dot.grid(row=0, column=0, sticky="w")
-        self.status_label = ttk.Label(status_frame, style="Status.TLabel")
-        self.status_label.grid(row=0, column=1, sticky="w", padx=(5, 0))
-        self.progress = ttk.Progressbar(
-            status_frame, mode="indeterminate", style="Lifeboat.Horizontal.TProgressbar"
-        )
-        self.progress.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(7, 0))
 
         self.result_frame = tk.Frame(
             self.main_panel,
@@ -2366,7 +2564,7 @@ class TransferApp(tk.Tk):
             padx=18,
             pady=12,
         )
-        self.result_frame.grid(row=5, column=0, sticky="ew", pady=(2, 8))
+        self.result_frame.grid(row=5, column=0, sticky="ew", pady=(0, 8))
         self.result_frame.columnconfigure(1, weight=1)
         self.result_title = tk.Label(
             self.result_frame,
@@ -2399,22 +2597,84 @@ class TransferApp(tk.Tk):
         self.result_path.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         self.result_frame.grid_remove()
 
-        log_frame = ttk.Frame(self.main_panel, style="App.TFrame")
-        log_frame.grid(row=7, column=0, sticky="nsew")
-        log_frame.columnconfigure(0, weight=1)
-        log_frame.rowconfigure(1, weight=1)
-        self.activity_label = ttk.Label(log_frame, style="Section.TLabel")
+        self.details_button = tk.Button(
+            self.main_panel, command=self._toggle_details, anchor="w", relief="flat",
+            borderwidth=0, bg=self.BG, fg=self.NAVY, activebackground=self.BG,
+            activeforeground=self.BLUE, font=("Segoe UI", 9, "bold"),
+            padx=0, pady=4, cursor="hand2"
+        )
+        self.details_button.grid(row=6, column=0, sticky="w")
+
+        self.log_frame = ttk.Frame(self.main_panel, style="App.TFrame")
+        self.log_frame.grid(row=7, column=0, sticky="nsew")
+        self.log_frame.columnconfigure(0, weight=1)
+        self.log_frame.rowconfigure(1, weight=1)
+        self.activity_label = ttk.Label(self.log_frame, style="Section.TLabel")
         self.activity_label.grid(row=0, column=0, sticky="w", pady=(0, 6))
         self.log = tk.Text(
-            log_frame, height=7, wrap="word", state="disabled",
+            self.log_frame, height=7, wrap="word", state="disabled",
             font=("Cascadia Mono", 9), background="#14212E", foreground="#DCE7F2",
             insertbackground="#FFFFFF", selectbackground=self.BLUE,
             borderwidth=0, padx=13, pady=11
         )
         self.log.grid(row=1, column=0, sticky="nsew")
-        scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log.yview)
+        scroll = ttk.Scrollbar(self.log_frame, orient="vertical", command=self.log.yview)
         scroll.grid(row=1, column=1, sticky="ns")
         self.log.configure(yscrollcommand=scroll.set)
+        self.log_frame.grid_remove()
+
+        def information_tab(symbol: str):
+            panel = tk.Frame(self.main_panel, bg=self.BG)
+            panel.grid(row=1, column=0, rowspan=2, sticky="nsew")
+            panel.columnconfigure(0, weight=1)
+            panel.rowconfigure(1, weight=1)
+            card = tk.Frame(
+                panel, bg=self.CARD, highlightbackground=self.BORDER,
+                highlightthickness=1, padx=34, pady=30
+            )
+            card.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+            icon = tk.Label(
+                card, text=symbol, bg="#EAF2FD", fg=self.BLUE,
+                width=3, pady=8, font=("Segoe UI Symbol", 18, "bold")
+            )
+            icon.grid(row=0, column=0, rowspan=3, sticky="n", padx=(0, 22))
+            heading = tk.Label(
+                card, bg=self.CARD, fg=self.NAVY, anchor="w",
+                font=("Segoe UI", 19, "bold")
+            )
+            heading.grid(row=0, column=1, sticky="w")
+            description = tk.Label(
+                card, bg=self.CARD, fg=self.MUTED, anchor="w", justify="left",
+                wraplength=760, font=("Segoe UI", 10)
+            )
+            description.grid(row=1, column=1, sticky="w", pady=(8, 18))
+            card.columnconfigure(1, weight=1)
+            return panel, heading, description, card
+
+        (
+            self.recovery_tab_frame,
+            self.recovery_tab_heading,
+            self.recovery_tab_description,
+            recovery_tab_card,
+        ) = information_tab("↶")
+        self.recovery_open_button = ttk.Button(
+            recovery_tab_card, command=self._manage_recovery, style="Primary.TButton"
+        )
+        self.recovery_open_button.grid(row=2, column=1, sticky="w")
+
+        (
+            self.diagnostics_tab_frame,
+            self.diagnostics_tab_heading,
+            self.diagnostics_tab_description,
+            diagnostics_tab_card,
+        ) = information_tab("✓")
+        self.diagnostics_run_button = ttk.Button(
+            diagnostics_tab_card, command=self._diagnostics, style="Primary.TButton"
+        )
+        self.diagnostics_run_button.grid(row=2, column=1, sticky="w")
+        self.recovery_tab_frame.grid_remove()
+        self.diagnostics_tab_frame.grid_remove()
+
         self.recovery_button = self.nav_recovery_button
         self.diagnostics_button = self.nav_diagnostics_button
         self.action_buttons = (
@@ -2422,11 +2682,304 @@ class TransferApp(tk.Tk):
             self.verify_backup_button,
             self.restore_button,
             self.verify_restore_button,
-            self.nav_backup_button,
-            self.nav_restore_button,
-            self.nav_recovery_button,
-            self.nav_diagnostics_button,
+            self.recovery_open_button,
+            self.diagnostics_run_button,
         )
+        self.nav_buttons = {
+            "overview": self.overview_button,
+            "backup": self.nav_backup_button,
+            "restore": self.nav_restore_button,
+            "recovery": self.nav_recovery_button,
+            "diagnostics": self.nav_diagnostics_button,
+        }
+        self._show_tab("overview")
+
+    def _show_tab(self, tab: str) -> None:
+        if tab not in self.nav_buttons:
+            tab = "overview"
+        self.current_tab = tab
+        for name, button in self.nav_buttons.items():
+            button.configure(
+                bg="#173955" if name == tab else self.NAVY_DARK,
+                fg="#FFFFFF" if name == tab else "#DCE8F4",
+            )
+
+        self.recovery_tab_frame.grid_remove()
+        self.diagnostics_tab_frame.grid_remove()
+        for widget in (
+            self.detection,
+            self.actions_frame,
+            self.status_frame,
+            self.metrics_frame,
+            self.details_button,
+        ):
+            widget.grid()
+        if self.last_result_model:
+            self.result_frame.grid()
+        else:
+            self.result_frame.grid_remove()
+        if self.details_visible:
+            self.log_frame.grid()
+        else:
+            self.log_frame.grid_remove()
+
+        if tab == "overview":
+            self.backup_card.grid(row=0, column=0, sticky="nsew", padx=(0, 7))
+            self.restore_card.grid(row=0, column=1, sticky="nsew", padx=(7, 0))
+            self.backup_button.configure(command=lambda: self._show_tab("backup"))
+            self.verify_backup_button.configure(command=lambda: self._show_tab("backup"))
+            self.restore_button.configure(command=lambda: self._show_tab("restore"))
+            self.verify_restore_button.configure(command=lambda: self._show_tab("restore"))
+        elif tab == "backup":
+            self.restore_card.grid_remove()
+            self.backup_card.grid(
+                row=0, column=0, columnspan=2, sticky="nsew", padx=0
+            )
+            self.backup_button.configure(command=self._backup)
+            self.verify_backup_button.configure(command=self._verify_backup)
+        elif tab == "restore":
+            self.backup_card.grid_remove()
+            self.restore_card.grid(
+                row=0, column=0, columnspan=2, sticky="nsew", padx=0
+            )
+            self.restore_button.configure(command=self._restore)
+            self.verify_restore_button.configure(command=self._verify_restore)
+        else:
+            for widget in (
+                self.detection,
+                self.actions_frame,
+                self.metrics_frame,
+                self.result_frame,
+            ):
+                widget.grid_remove()
+            if tab == "recovery":
+                self.recovery_tab_frame.grid()
+            else:
+                self.diagnostics_tab_frame.grid()
+            if self.busy:
+                self.status_frame.grid()
+                self.details_button.grid()
+                if self.details_visible:
+                    self.log_frame.grid()
+                else:
+                    self.log_frame.grid_remove()
+            else:
+                self.status_frame.grid_remove()
+                self.details_button.grid_remove()
+                self.log_frame.grid_remove()
+        self._translate_tab()
+
+    def _translate_tab(self) -> None:
+        title_key, subtitle_key = {
+            "overview": ("overview", "overview_subtitle"),
+            "backup": ("backup_tab_title", "backup_tab_subtitle"),
+            "restore": ("restore_tab_title", "restore_tab_subtitle"),
+            "recovery": ("recovery_title", "recovery_tab_subtitle"),
+            "diagnostics": ("diagnostics_title", "diagnostics_tab_subtitle"),
+        }.get(self.current_tab, ("overview", "overview_subtitle"))
+        self.overview_title.configure(text=self.t(title_key))
+        self.overview_subtitle.configure(text=self.t(subtitle_key))
+        self.recovery_tab_heading.configure(text=self.t("recovery_title"))
+        self.recovery_tab_description.configure(text=self.t("recovery_tab_help"))
+        self.recovery_open_button.configure(text=self.t("open_recovery"))
+        self.diagnostics_tab_heading.configure(text=self.t("diagnostics_title"))
+        self.diagnostics_tab_description.configure(text=self.t("diagnostics_tab_help"))
+        self.diagnostics_run_button.configure(text=self.t("run_diagnostics"))
+        if self.current_tab == "overview":
+            self.backup_button.configure(text=self.t("open_backup_tab"))
+            self.verify_backup_button.configure(text=self.t("open_backup_tab"))
+            self.restore_button.configure(text=self.t("open_restore_tab"))
+            self.verify_restore_button.configure(text=self.t("open_restore_tab"))
+        elif self.current_tab == "backup":
+            self.backup_button.configure(text=self.t("backup"))
+            self.verify_backup_button.configure(text=self.t("verify_backup"))
+        elif self.current_tab == "restore":
+            self.restore_button.configure(text=self.t("restore"))
+            self.verify_restore_button.configure(text=self.t("verify_restore"))
+
+    def _toggle_details(self) -> None:
+        self.details_visible = not self.details_visible
+        if self.details_visible:
+            self.log_frame.grid()
+        else:
+            self.log_frame.grid_remove()
+        self.details_button.configure(
+            text=("⌃  " if self.details_visible else "⌄  ")
+            + self.t("hide_details" if self.details_visible else "show_details")
+        )
+
+    @staticmethod
+    def _format_duration(seconds: float | None) -> str:
+        if seconds is None or seconds < 0:
+            return "—"
+        rounded = int(seconds)
+        hours, remainder = divmod(rounded, 3600)
+        minutes, secs = divmod(remainder, 60)
+        if hours:
+            return f"{hours:d}:{minutes:02d}:{secs:02d}"
+        return f"{minutes:d}:{secs:02d}"
+
+    def _operation_title_key(self) -> str:
+        return {
+            "backup": "operation_backup_title",
+            "verify_backup": "operation_verify_title",
+            "restore": "operation_restore_title",
+            "verify_restore": "operation_restore_verify_title",
+        }.get(self.operation_key, "operation_other_title")
+
+    def _begin_operation(self, operation: str | None = None) -> None:
+        self.operation_key = operation or "other"
+        self.operation_started_at = time.monotonic()
+        self.phase_started_at = self.operation_started_at
+        self.phase_signature = ""
+        self.operation_progress = 0.0
+        self.last_progress_current = 0
+        self.last_progress_total = 0
+        self.last_progress_message = self.t("working")
+        self.progress.configure(mode="determinate", maximum=100, value=0)
+        self.progress_percent.configure(text="0%", fg=self.NAVY)
+        self.progress_measure.configure(text="—")
+        self.remaining_label.configure(text=f"{self.t('remaining')}: {self.t('calculating')}")
+        self.throughput_label.configure(text=f"{self.t('throughput')}: —")
+        self._render_operation_state()
+
+    def _finish_operation(self, success: bool) -> None:
+        if self.operation_started_at is not None:
+            self.elapsed_label.configure(
+                text=f"{self.t('elapsed')}: "
+                f"{self._format_duration(time.monotonic() - self.operation_started_at)}"
+            )
+        if success:
+            self.operation_progress = 100.0
+            self.progress.configure(value=100)
+            self.progress_percent.configure(text="100%", fg=self.SUCCESS)
+        else:
+            self.progress_percent.configure(fg="#B42318")
+        self.remaining_label.configure(text=f"{self.t('remaining')}: —")
+        self.throughput_label.configure(text=f"{self.t('throughput')}: —")
+        self._render_stage_state(complete=success)
+
+    @staticmethod
+    def _progress_stage(message: str) -> int:
+        text = message.casefold()
+        step_match = re.search(r"step\s+(\d+)\s*/\s*\d+", text)
+        if step_match:
+            return {1: 0, 2: 0, 3: 1, 4: 3, 5: 3, 6: 4}.get(
+                int(step_match.group(1)), 0
+            )
+        if any(word in text for word in ("complete", "completing", "finaliz", "afrond")):
+            return 4
+        if any(
+            word in text
+            for word in (
+                "hash", "validat", "verif", "integrity", "manifest", "checking",
+                "controle", "controleren",
+            )
+        ):
+            return 3
+        if any(word in text for word in ("attachment", "conversation", "chat", "database")):
+            return 2
+        if any(
+            word in text
+            for word in ("copy", "copied", "staging", "replacing", "safety copy", "herstelpunt")
+        ):
+            return 1
+        return 0
+
+    def _apply_progress(self, current: int, total: int, message: str) -> None:
+        current = max(int(current), 0)
+        total = max(int(total), 0)
+        stage = self._progress_stage(message)
+        self.operation_progress = weighted_operation_progress(
+            self.operation_progress, stage, current, total
+        )
+        self.last_progress_current = current
+        self.last_progress_total = total
+        self.last_progress_message = message
+
+        signature = f"{self.operation_key}:{stage}"
+        if signature != self.phase_signature:
+            self.phase_signature = signature
+            self.phase_started_at = time.monotonic()
+
+        self.progress.configure(mode="determinate", maximum=100, value=self.operation_progress)
+        self.progress_percent.configure(
+            text=f"{self.operation_progress:.0f}%", fg=self.NAVY
+        )
+        self.status_label.configure(text=f"{self.t('current_task')}: {message}")
+        if total > 0:
+            byte_measure = total >= 1024 * 1024 or any(
+                word in message.casefold() for word in ("hash", "validat", "byte", "gib", "mib")
+            )
+            if byte_measure:
+                measure = self.t(
+                    "bytes_progress", current=_format_bytes(current), total=_format_bytes(total)
+                )
+            else:
+                measure = self.t(
+                    "files_progress", current=f"{current:,}", total=f"{total:,}"
+                )
+            self.progress_measure.configure(text=measure)
+        else:
+            self.progress_measure.configure(text=self.t("calculating"))
+
+        elapsed_phase = max(time.monotonic() - (self.phase_started_at or time.monotonic()), 0.001)
+        if total >= 1024 * 1024 and current > 0:
+            rate = current / elapsed_phase
+            remaining = (total - current) / rate if rate > 0 else None
+            self.remaining_label.configure(
+                text=f"{self.t('remaining')}: {self._format_duration(remaining)}"
+            )
+            self.throughput_label.configure(
+                text=f"{self.t('throughput')}: {_format_bytes(int(rate))}/s"
+            )
+        else:
+            self.remaining_label.configure(text=f"{self.t('remaining')}: {self.t('calculating')}")
+            self.throughput_label.configure(text=f"{self.t('throughput')}: —")
+        self._render_stage_state(active=stage)
+
+    def _render_stage_state(self, active: int | None = None, complete: bool = False) -> None:
+        ranges = PROGRESS_STAGE_RANGES
+        if active is None:
+            active = next(
+                (index for index, (_start, end) in enumerate(ranges) if self.operation_progress < end),
+                4,
+            )
+        for index, (dot, label) in enumerate(zip(self.stage_dots, self.stage_labels)):
+            done = complete or self.operation_progress >= ranges[index][1]
+            if done:
+                dot.configure(text="✓", bg=self.SUCCESS, fg="#FFFFFF")
+                label.configure(fg=self.SUCCESS)
+            elif self.busy and index == active:
+                dot.configure(text=str(index + 1), bg="#FFF0D6", fg="#A85B00")
+                label.configure(fg=self.NAVY)
+            else:
+                dot.configure(text=str(index + 1), bg="#EDF1F5", fg=self.MUTED)
+                label.configure(fg=self.MUTED)
+
+    def _render_operation_state(self) -> None:
+        if self.busy:
+            self.operation_title.configure(text=self.t(self._operation_title_key()))
+            self.operation_subtitle.configure(text=self.t("source_unchanged"))
+        else:
+            self.operation_title.configure(text=self.t("operation_idle_title"))
+            self.operation_subtitle.configure(text=self.t("operation_idle_subtitle"))
+        self._render_stage_state(complete=(not self.busy and self.operation_progress >= 100))
+
+    def _tick_operation_clock(self) -> None:
+        if self.busy and self.operation_started_at is not None:
+            elapsed = time.monotonic() - self.operation_started_at
+            self.elapsed_label.configure(
+                text=f"{self.t('elapsed')}: {self._format_duration(elapsed)}"
+            )
+            # A quiet pulse communicates life during phases without measurable totals.
+            if self.last_progress_total <= 0:
+                pulse = "." * (1 + int(elapsed * 2) % 3)
+                base = self.last_progress_message.rstrip(".") or self.t("working")
+                self.status_label.configure(
+                    text=f"{self.t('current_task')}: {base}{pulse}"
+                )
+        self.after(500, self._tick_operation_clock)
 
     def _change_language(self, _event=None) -> None:
         self.language.set("en" if self.language_box.current() == 0 else "nl")
@@ -2451,8 +3004,6 @@ class TransferApp(tk.Tk):
         self.title_label.configure(text=self.t("title"))
         self.subtitle_label.configure(text=self.t("subtitle"))
         self.sidebar_note.configure(text=self.t("subtitle"))
-        self.overview_title.configure(text=self.t("overview"))
-        self.overview_subtitle.configure(text=self.t("overview_subtitle"))
         self.overview_button.configure(text="⌂   " + self.t("overview"))
         self.nav_backup_button.configure(text="↑   " + self.t("nav_backup"))
         self.nav_restore_button.configure(text="↓   " + self.t("nav_restore"))
@@ -2474,6 +3025,17 @@ class TransferApp(tk.Tk):
         self.included_heading.configure(text=self.t("included"))
         self.storage_heading.configure(text=self.t("storage"))
         self.activity_label.configure(text=self.t("activity"))
+        for widget, key in zip(
+            self.stage_labels,
+            ("stage_discover", "stage_copy", "stage_chats", "stage_verify", "stage_finish"),
+        ):
+            widget.configure(text=self.t(key))
+        self.details_button.configure(
+            text=("⌃  " if self.details_visible else "⌄  ")
+            + self.t("hide_details" if self.details_visible else "show_details")
+        )
+        self._translate_tab()
+        self._render_operation_state()
         self._render_last_result()
         if self.launch_blocked:
             self.status_label.configure(text=self.t("extract_status"))
@@ -2481,7 +3043,14 @@ class TransferApp(tk.Tk):
                 text="●  " + self.t("warning"), bg="#FFF4E5", fg="#A15C00"
             )
         else:
-            self.status_label.configure(text=self.t("working") if self.busy else self.t("ready"))
+            self.status_label.configure(
+                text=f"{self.t('current_task')}: {self.last_progress_message or self.t('working')}"
+                if self.busy else self.t("ready")
+            )
+            if not self.busy and self.operation_started_at is None:
+                self.elapsed_label.configure(text=f"{self.t('elapsed')}: —")
+                self.remaining_label.configure(text=f"{self.t('remaining')}: —")
+                self.throughput_label.configure(text=f"{self.t('throughput')}: —")
             self.header_status.configure(
                 text="●  " + (self.t("working") if self.busy else self.t("ready")),
                 bg="#EAF2FD" if self.busy else "#E8F7EF",
@@ -2556,24 +3125,18 @@ class TransferApp(tk.Tk):
                 self._append_log(str(value))
             elif kind == "progress":
                 current, total, message = value
-                self.progress.stop()
-                if int(total) <= 0:
-                    self.progress.configure(mode="indeterminate", value=0)
-                    self.progress.start(10)
-                else:
-                    self.progress.configure(
-                        mode="determinate",
-                        maximum=max(int(total), 1),
-                        value=min(int(current), max(int(total), 1)),
-                    )
-                self.status_label.configure(text=str(message))
+                self._apply_progress(int(current), int(total), str(message))
             elif kind == "done":
+                self._finish_operation(True)
                 self._set_busy(False)
                 callback, result = value
                 callback(result)
             elif kind == "error":
+                self._finish_operation(False)
                 self._set_busy(False)
                 self._append_log(str(value))
+                if not self.details_visible:
+                    self._toggle_details()
                 messagebox.showerror(self.t("error"), str(value), parent=self)
         self.after(100, self._drain_messages)
 
@@ -2584,20 +3147,18 @@ class TransferApp(tk.Tk):
             button.configure(
                 state="disabled" if value or self.launch_blocked else "normal"
             )
-        if value:
-            self.progress.configure(mode="indeterminate", value=0)
-            self.progress.start(10)
-        else:
-            self.progress.stop()
-            self.progress.configure(mode="indeterminate", value=0)
+        if not value:
+            self.phase_started_at = None
         self._translate()
+        self._show_tab(self.current_tab)
 
-    def _run(self, function, done) -> None:
+    def _run(self, function, done, operation: str | None = None) -> None:
         if self.launch_blocked:
             self._show_extract_required()
             return
         if self.busy:
             return
+        self._begin_operation(operation)
         self._set_busy(True)
 
         def worker():
@@ -2612,6 +3173,18 @@ class TransferApp(tk.Tk):
 
     def _log_callback(self, message: str) -> None:
         self.messages.put(("log", message))
+        text = str(message).strip().casefold()
+        if self.busy and (
+            text.startswith("copying ")
+            or text.startswith("... copied ")
+            or text.startswith("inventorying ")
+        ):
+            self.messages.put(("progress", (0, 0, str(message))))
+
+    def _operation_log_callback(self, message: str) -> None:
+        self.messages.put(("log", message))
+        if str(message).strip():
+            self.messages.put(("progress", (0, 0, str(message))))
 
     def _status_callback(self, current: int, total: int, message: str) -> None:
         self.messages.put(("progress", (current, total, message)))
@@ -2636,7 +3209,9 @@ class TransferApp(tk.Tk):
 
     def _initial_destination(self) -> str:
         drives = windows.removable_drives()
-        return str(drives[0]) if drives else str(Path.home() / "Documents")
+        return backup_destination_initial_directory(
+            drives, Path.home() / "Documents"
+        )
 
     def _choose_package(self) -> Path | None:
         detected = windows.detect_backup_packages()
@@ -2661,7 +3236,7 @@ class TransferApp(tk.Tk):
         def preview_work():
             return backup.build_backup_preview()
 
-        self._run(preview_work, self._continue_backup_from_preview)
+        self._run(preview_work, self._continue_backup_from_preview, "backup")
 
     def _continue_backup_from_preview(self, preview: dict) -> None:
         # The selection window is intentionally non-modal so Windows can restore
@@ -2676,17 +3251,54 @@ class TransferApp(tk.Tk):
             )
         if not dialog.approved:
             return
-        drives = windows.removable_drives()
-        if len(drives) == 1:
-            selected = str(drives[0] / "Codex Backups")
-        else:
-            selected = filedialog.askdirectory(
-                title=self.t("choose_destination"),
-                initialdir=self._initial_destination(),
+        initial_destination = self._initial_destination()
+        while True:
+            selected = ask_backup_destination(
+                self,
+                self.t("choose_destination"),
+                initial_destination,
+            )
+            if not selected:
+                return
+            path_report = backup.destination_path_budget(
+                Path(selected),
+                backup.preview_path_budget_items(preview, dialog.excluded_paths),
+            )
+            if path_report["safe"]:
+                break
+            problem = path_report.get("componentLimitExceeded") or path_report["longest"]
+            if path_report.get("componentLimitExceeded"):
+                reason = self.t(
+                    "path_budget_component_reason",
+                    length=problem.get("componentLength"),
+                    limit=path_report.get("componentLimit"),
+                )
+            else:
+                reason = self.t(
+                    "path_budget_path_reason",
+                    length=problem.get("pathLength"),
+                    limit=path_report.get("classicLimit"),
+                )
+            long_paths = path_report.get("longPathsEnabled")
+            long_paths_label = self.t(
+                "long_paths_enabled"
+                if long_paths is True
+                else "long_paths_disabled"
+                if long_paths is False
+                else "long_paths_unknown"
+            )
+            messagebox.showerror(
+                self.t("error"),
+                self.t(
+                    "path_budget_error",
+                    reason=reason,
+                    source=problem.get("sourcePath") or "—",
+                    target=problem.get("projectedPath") or "—",
+                    long_paths=long_paths_label,
+                ),
                 parent=self,
             )
-        if not selected:
-            return
+            initial_destination = selected
         summary = dialog.selected_summary
         if not messagebox.askyesno(
             self.t("backup"),
@@ -2733,7 +3345,7 @@ class TransferApp(tk.Tk):
         def done(path):
             self._show_backup_result(Path(path))
 
-        self._run(work, done)
+        self._run(work, done, "backup")
 
     def _verify_backup(self) -> None:
         package = self._choose_package()
@@ -2759,12 +3371,14 @@ class TransferApp(tk.Tk):
                 ),
             ),
             done,
+            "verify_backup",
         )
 
     def _manage_recovery(self) -> None:
         self._run(
             lambda: recovery.list_points(Path.home()),
             lambda result: RecoveryDialog(self, result),
+            "other",
         )
 
     def _diagnostics(self) -> None:
@@ -2772,6 +3386,7 @@ class TransferApp(tk.Tk):
         self._run(
             diagnostics.build_report,
             lambda result: DiagnosticsDialog(self, result),
+            "other",
         )
 
     def _clean_recovery(self, dialog: RecoveryDialog) -> None:
@@ -2799,6 +3414,7 @@ class TransferApp(tk.Tk):
                 Path.home(), progress=self._log_callback
             ),
             done,
+            "other",
         )
 
     def _map_project_locations(self, package: Path) -> dict[str, str] | None:
@@ -2945,6 +3561,7 @@ class TransferApp(tk.Tk):
                 ),
             ),
             preview_done,
+            "restore",
         )
 
     def _execute_restore(
@@ -2955,7 +3572,7 @@ class TransferApp(tk.Tk):
             prepared = restore.prepare_restore(
                 package,
                 Path.home(),
-                self._log_callback,
+                self._operation_log_callback,
                 allow_running_test=False,
                 external_roots=external_roots,
                 comparison_plan=comparison_plan,
@@ -2986,7 +3603,7 @@ class TransferApp(tk.Tk):
                 package,
                 Path.home(),
                 Path(prepared["safetyRoot"]),
-                self._log_callback,
+                self._operation_log_callback,
                 external_roots=external_roots,
             )
 
@@ -3009,7 +3626,7 @@ class TransferApp(tk.Tk):
                     parent=self,
                 )
 
-        self._run(work, done)
+        self._run(work, done, "restore")
 
     def _verify_restore(self) -> None:
         package = self._choose_package()
@@ -3036,7 +3653,11 @@ class TransferApp(tk.Tk):
                     self.t("error"), "\n".join(result["errors"][:10]), parent=self
                 )
 
-        self._run(lambda: restore.verify_restored(package, Path.home()), done)
+        self._run(
+            lambda: restore.verify_restored(package, Path.home()),
+            done,
+            "verify_restore",
+        )
 
 
 def run_gui() -> None:

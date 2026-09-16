@@ -4,7 +4,7 @@
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Stabiele release:** versie 3.4.4 doorliep de geautomatiseerde bron-, EXE- en
+> **Stabiele release:** versie 3.4.5 doorliep de geautomatiseerde bron-, EXE- en
 > ZIP-tests en een echte Windows 11-route van pc A naar pc B en terug naar pc A.
 > Back-up, onafhankelijke back-upcontrole, herstel, herstelcontrole en verder
 > werken in Codex slaagden. Bewaar onvervangbare gegevens ook apart en lees de
@@ -12,7 +12,7 @@
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.4](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.4)
+### [Download Codex Lifeboat 3.4.5](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.5)
 
 Download op de releasepagina uitsluitend dit bestand:
 
@@ -37,12 +37,20 @@ is ondertekend. Controleer voor gebruik het meegeleverde `SHA256.txt`.
 4. Kies **Volledige back-up maken**.
 5. Controleer de inventaris. Alles staat standaard aan; sluit een project alleen uit
    als de bestanden niet vanuit deze back-up hersteld hoeven te kunnen worden.
-6. Kies daarna **Back-up controleren**.
+6. Kies desgevraagd de USB-schijf of doelmap.
+7. Kies daarna **Back-up controleren**.
 
 Bij het aanmaken wordt iedere payload eenmaal gelezen om de SHA-256 vast te leggen,
 gevolgd door snelle controles van database, manifesten, paden, omvang en back-uplijn.
 **Back-up controleren** is de aparte volledige onafhankelijke herlezing, zodat het
 langzaamste leeswerk niet direct dubbel wordt uitgevoerd.
+
+Windows-ondersteuning voor lange paden is niet verplicht als alle geselecteerde
+paden veilig passen. Is die ondersteuning uitgeschakeld of onbekend en bereikt een
+verplicht verwacht pad de klassieke grens van 260 tekens, dan vraagt Lifeboat vóór
+het grote kopieerwerk om een kortere doelmap. Alleen een te lange reconstrueerbare
+Python-cache blokkeert de kernback-up niet: weigert Windows die kopie, dan wordt dit
+vastgelegd en eindigt de back-up geldig met waarschuwingen.
 
 ## Herstellen op een nieuwe computer
 
@@ -73,6 +81,8 @@ leeg totdat op deze computer een back-up is teruggezet.
 
 - Projectmappen, inclusief `.git`, `.env` en niet-gecommitte bestanden
 - Actieve en gearchiveerde lokale chats
+- Voorzichtige afhandeling van dubbele rollouts via het unieke databasepad en de
+  actieve/gearchiveerde map, met behoud van ieder alternatief als niet-herstelbaar bewijs
 - Project- en chatkoppelingen en beschikbare lokale bijlagen
 - Skills en overdraagbare Codex-instellingen
 - Een consistente SQLite-snapshot en SHA-256-controle
@@ -83,8 +93,21 @@ leeg totdat op deze computer een back-up is teruggezet.
 - Transactionele, met hashes gecontroleerde projectvervanging zonder oude restbestanden
 - Een veiligheidskopie en automatische rollback bij fouten
 - Een visueel resultaat dat toont wat beschermd en gecontroleerd is
+- Een overzicht in vijf fasen met stabiele voortgang, de huidige bewerking,
+  verwerkte bestanden of bytes, verstreken tijd, resterende tijd en snelheid
+- Afzonderlijke pagina's voor overzicht, back-ups, herstel, herstelpunten en
+  diagnose; navigeren start nooit direct een taak
+- Inklapbare technische details, zodat de hoofdwerkwijze rustig en begrijpelijk blijft
 - Een inventaris vóór de back-up met locatie, bestandenaantal, omvang en grootste
   mappen per project; alle projecten zijn standaard geselecteerd
+- Bij iedere back-up een expliciete keuze van de doelmap, ook als één USB-schijf is gevonden
+- Een voorafgaande Windows-padlengtecontrole die rekening houdt met de korte
+  stagingmap, uiteindelijke back-upnaam, geselecteerde inhoud, instelling voor
+  lange paden en limieten voor map- en bestandsnamen
+- Zeer beperkte fouttolerantie voor reconstrueerbare Python-bytecodecache; zulke
+  overgeslagen cachebestanden blijven als waarschuwing zichtbaar, terwijl gewone
+  bestanden verplicht blijven
+- Duidelijk gemarkeerde onvolledige stagingdata die nooit als herstelbron wordt aangeboden
 - Optioneel een heel project uitsluiten terwijl chats en Codex-instellingen meegaan
 - Beheerde herstelpunten met schijfgebruik en behoud van twee geldige punten
 - Een alleen-lezen diagnosecentrum met duidelijke geslaagd-, let-op- en foutstatus

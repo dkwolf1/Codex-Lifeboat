@@ -742,6 +742,28 @@ def _write_older_target(profile: Path, marker: str) -> tuple[Path, Path]:
     return codex, project
 
 
+def _progress_model_test() -> bool:
+    from .gui import TransferApp, weighted_operation_progress
+
+    progress = weighted_operation_progress(0, 0, 5, 10)
+    progress = weighted_operation_progress(progress, 1, 0, 0)
+    copy_start = progress
+    progress = weighted_operation_progress(progress, 3, 50, 100)
+    measured = progress
+    progress = weighted_operation_progress(progress, 3, 0, 0)
+    progress = weighted_operation_progress(progress, 4, 1, 1)
+    return bool(
+        copy_start >= 15
+        and measured >= copy_start
+        and progress == 100
+        and TransferApp._progress_stage("Scanning project 1/3") == 0
+        and TransferApp._progress_stage("Step 3/6 — Copying conversations") == 1
+        and TransferApp._progress_stage("Inventorying conversation attachments") == 2
+        and TransferApp._progress_stage("Hashing backup: 5/10") == 3
+        and TransferApp._progress_stage("Backup complete") == 4
+    )
+
+
 def _gui_smoke_test() -> bool:
     # Tcl/Tk teardown can wait indefinitely inside a hidden PyInstaller one-file
     # child process. The actual bilingual widget test runs in the source test;
@@ -765,7 +787,7 @@ def _gui_smoke_test() -> bool:
         app.language.set("nl")
         app._translate()
         dutch = bool(
-            app.backup_button.cget("text") == "Back-up maken"
+            app.backup_button.cget("text") == "Naar back-ups"
             and app.overview_title.cget("text") == "Overzicht"
             and app.t("map_external_title") == "Projectlocatie kiezen"
             and "veilig" in app.t("map_external_invalid", errors="test")
@@ -779,7 +801,7 @@ def _gui_smoke_test() -> bool:
         app.language.set("en")
         app._translate()
         english = bool(
-            app.backup_button.cget("text") == "Create backup"
+            app.backup_button.cget("text") == "Open backups"
             and app.overview_title.cget("text") == "Overview"
             and app.t("map_external_title") == "Choose project location"
             and "safely" in app.t("map_external_invalid", errors="test")
@@ -790,6 +812,35 @@ def _gui_smoke_test() -> bool:
             and app.t("recovery") == "Recovery points"
             and app.t("diagnostics") == "Diagnostics"
         )
+        app._show_tab("overview")
+        app.backup_button.invoke()
+        opened_backup_tab = app.current_tab == "backup"
+        app.nav_restore_button.invoke()
+        opened_restore_tab = app.current_tab == "restore"
+        app.nav_recovery_button.invoke()
+        opened_recovery_tab = app.current_tab == "recovery"
+        app.nav_diagnostics_button.invoke()
+        opened_diagnostics_tab = app.current_tab == "diagnostics"
+        navigation_tabs = bool(
+            opened_backup_tab
+            and opened_restore_tab
+            and opened_recovery_tab
+            and opened_diagnostics_tab
+        )
+        app._show_tab("overview")
+        app._begin_operation("backup")
+        app._set_busy(True)
+        app._apply_progress(50, 100, "Hashing backup: 5/10 files")
+        measured_progress = float(app.progress.cget("value"))
+        app._apply_progress(0, 0, "Step 5/6 — Checking package structure")
+        progress_ui_stable = bool(
+            str(app.progress.cget("mode")) == "determinate"
+            and float(app.progress.cget("value")) >= measured_progress
+            and app.progress_percent.cget("text").endswith("%")
+            and app.stage_labels[3].cget("foreground") == app.NAVY
+        )
+        app._finish_operation(True)
+        app._set_busy(False)
         blocked_dialog = RestorePlanDialog(
             app,
             {
@@ -1027,7 +1078,8 @@ def _gui_smoke_test() -> bool:
         )
         diagnostics_dialog.destroy()
         return bool(
-            dutch and english and len(app.action_buttons) == 8
+            dutch and english and progress_ui_stable and navigation_tabs
+            and len(app.action_buttons) == 6
             and blocked_is_disabled and ready_is_enabled
             and decision_button_enabled and decision_resolved
             and archive_button_enabled and project_decision_resolved
@@ -1348,10 +1400,17 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
         destination: Path,
         exclude_fragments: list[str],
         warnings: list[str],
+        skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
     ) -> tuple[int, int]:
         if source.name.lower() == "plugins":
             raise PermissionError(87, "plugin runtime must not be opened", str(source))
-        return original_copy_tree(source, destination, exclude_fragments, warnings)
+        return original_copy_tree(
+            source,
+            destination,
+            exclude_fragments,
+            warnings,
+            skipped_reconstructable_cache,
+        )
 
     warnings: list[str] = []
     try:
@@ -1945,6 +2004,516 @@ def _conversation_prefix_classifier_test(root: Path) -> tuple[bool, bool]:
     return safe_classifier, strict_rejection
 
 
+def _rollout_preflight_diagnostics_test(root: Path, source_profile: Path) -> bool:
+    duplicate_profile = root / "duplicate-rollout-user"
+    _copy_profile_fixture(source_profile, duplicate_profile)
+    duplicate_codex = duplicate_profile / ".codex"
+    connection = sqlite3.connect(duplicate_codex / "state_5.sqlite")
+    try:
+        database_rollout = Path(
+            str(
+                connection.execute(
+                    'SELECT "rollout_path" FROM "threads" WHERE "id"=?',
+                    (THREAD_ID,),
+                ).fetchone()[0]
+            ).replace("\\\\?\\", "")
+        )
+    finally:
+        connection.close()
+    duplicate_rollout = (
+        duplicate_codex
+        / "archived_sessions"
+        / f"duplicate-{THREAD_ID}.jsonl"
+    )
+    duplicate_rollout.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(database_rollout, duplicate_rollout)
+    unmatched_database_rollout = duplicate_codex / "sessions" / "missing-rollout.jsonl"
+    connection = sqlite3.connect(duplicate_codex / "state_5.sqlite")
+    try:
+        connection.execute(
+            'UPDATE "threads" SET "rollout_path"=? WHERE "id"=?',
+            (str(unmatched_database_rollout), THREAD_ID),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    source_before = _hash_tree(duplicate_profile)
+
+    destination = root / "duplicate-rollout-usb"
+    config = root / "duplicate-rollout-config.json"
+    backup.write_json(
+        config,
+        {
+            "configVersion": 1,
+            "destinationRoot": str(destination),
+            "includeAttachments": True,
+            "projects": [],
+            "additionalPortablePaths": [],
+            "excludeDirectoryNames": [],
+            "projectRegistryPath": str(root / "duplicate-state" / "project-registry.json"),
+            "lineageStatePath": str(root / "duplicate-state" / "lineage-state.json"),
+            "deviceStatePath": str(root / "duplicate-state" / "device.json"),
+        },
+    )
+    portable_copy_called = False
+
+    def reject_portable_copy(*_args, **_kwargs):
+        nonlocal portable_copy_called
+        portable_copy_called = True
+        raise AssertionError("portable profile copy ran before rollout preflight")
+
+    failure: Exception | None = None
+    with mock.patch.object(
+        backup, "copy_portable_codex_profile", side_effect=reject_portable_copy
+    ):
+        try:
+            backup.build_backup(
+                argparse.Namespace(
+                    config=str(config),
+                    destination=str(destination),
+                    source_profile=str(duplicate_profile),
+                    source_codex_home=str(duplicate_codex),
+                    allow_running_test=True,
+                )
+            )
+        except Exception as exc:
+            failure = exc
+
+    retained = [path for path in destination.iterdir() if path.is_dir()]
+    report_path = retained[0] / "reports" / "rollout-errors.json" if retained else None
+    report = backup.read_json(report_path) if report_path and report_path.is_file() else {}
+    incomplete_path = retained[0] / "INCOMPLETE.json" if retained else None
+    incomplete = (
+        backup.read_json(incomplete_path)
+        if incomplete_path and incomplete_path.is_file()
+        else {}
+    )
+    duplicate_items = report.get("duplicateRollouts", [])
+    candidates = duplicate_items[0].get("candidates", []) if duplicate_items else []
+    candidate_paths = {str(item.get("sourcePath")) for item in candidates}
+    hashes = {str(item.get("sha256")) for item in candidates}
+    if retained:
+        # Even a stale or misleading completion manifest must never make a
+        # clearly marked staging directory discoverable as a restore source.
+        backup.write_json(
+            retained[0] / "manifest" / "package.json", {"backupComplete": True}
+        )
+    with mock.patch.object(windows, "removable_drives", return_value=[destination]):
+        auto_detected = windows.detect_backup_packages()
+    incomplete_validation = validate(retained[0], False) if retained else {}
+    return bool(
+        isinstance(failure, backup.BackupError)
+        and THREAD_ID in str(failure)
+        and str(database_rollout) in str(failure)
+        and str(duplicate_rollout) in str(failure)
+        and report_path is not None
+        and str(report_path) in str(failure)
+        and report.get("duplicateThreadIds") == [THREAD_ID]
+        and report.get("missingThreadIds") == []
+        and duplicate_items[0].get("candidateHashesMatch") is True
+        and duplicate_items[0].get("databaseRolloutPath")
+        == str(unmatched_database_rollout)
+        and candidate_paths == {str(database_rollout), str(duplicate_rollout)}
+        and len(hashes) == 1
+        and None not in {item.get("sha256") for item in candidates}
+        and sum(bool(item.get("matchesDatabaseRolloutPath")) for item in candidates) == 0
+        and report.get("resolution", {}).get("unresolvedDuplicateThreadIds")
+        == [THREAD_ID]
+        and not portable_copy_called
+        and not any(
+            (path / "codex" / "portable-profile").exists() for path in retained
+        )
+        and len(retained) == 1
+        and retained[0].name.startswith(backup.STAGING_NAME_PREFIX)
+        and len(retained[0].name)
+        == len(backup.STAGING_NAME_PREFIX) + backup.STAGING_TOKEN_LENGTH
+        and incomplete.get("incomplete") is True
+        and incomplete.get("restorable") is False
+        and incomplete.get("phase") == "rollout-preflight"
+        and "reports/backup-error.txt" in incomplete.get("availableReports", [])
+        and "reports/rollout-errors.json" in incomplete.get("availableReports", [])
+        and not windows.completed_backup_package(retained[0])
+        and retained[0] not in auto_detected
+        and incomplete_validation.get("valid") is False
+        and any(
+            "INCOMPLETE.json" in error
+            for error in incomplete_validation.get("errors", [])
+        )
+        and source_before == _hash_tree(duplicate_profile)
+    )
+
+
+def _path_budget_test(root: Path) -> bool:
+    source = root / "source" / "file.txt"
+    destination = Path("C:/B")
+
+    def boundary_report(
+        length: int, long_paths: bool, source_path: Path = source
+    ) -> dict[str, Any]:
+        final_root = destination / "Codex-PortableBackup-YYYYMMDD-HHMMSS-000000"
+        relative_length = length - len(str(final_root)) - 1
+        if relative_length <= 0 or relative_length > backup.COMMON_COMPONENT_LIMIT:
+            raise AssertionError("path-boundary fixture is not representable")
+        budget = backup.new_path_budget()
+        backup.record_projected_path(
+            budget,
+            source_path,
+            "x" * relative_length,
+            reconstructable_cache=backup.is_reconstructable_python_cache(source_path),
+        )
+        return backup.destination_path_budget(
+            destination, backup.path_budget_items(budget), long_paths=long_paths
+        )
+
+    boundary_259 = boundary_report(259, False)
+    boundary_260 = boundary_report(260, False)
+    boundary_261 = boundary_report(261, False)
+    boundary_261_long = boundary_report(261, True)
+    cache_boundary_261 = boundary_report(
+        261, False, source.with_name("reconstructable.pyc")
+    )
+
+    component_budget = backup.new_path_budget()
+    oversized_component = "x" * (backup.COMMON_COMPONENT_LIMIT + 1)
+    backup.record_projected_path(
+        component_budget, source, f"codex/{oversized_component}/file.txt"
+    )
+    component_report = backup.destination_path_budget(
+        root / "usb", backup.path_budget_items(component_budget), long_paths=True
+    )
+
+    preview = {
+        "codex": {
+            "pathBudgetItems": [
+                {"sourcePath": "codex", "packageRelativePath": "codex/file.txt"}
+            ]
+        },
+        "projects": [
+            {
+                "path": str(root / "included"),
+                "pathBudgetItems": [
+                    {
+                        "sourcePath": "included",
+                        "packageRelativePath": "projects/root-id/included.txt",
+                    }
+                ],
+            },
+            {
+                "path": str(root / "excluded"),
+                "pathBudgetItems": [
+                    {
+                        "sourcePath": "excluded",
+                        "packageRelativePath": "projects/root-id/excluded.txt",
+                    }
+                ],
+            },
+        ],
+    }
+    selected_items = backup.preview_path_budget_items(
+        preview, [str(root / "excluded")]
+    )
+    return bool(
+        boundary_259["safe"]
+        and boundary_259["longest"]["pathLength"] == 259
+        and not boundary_260["safe"]
+        and boundary_260["classicLimitExceeded"]
+        and boundary_260["longest"]["pathLength"] == 260
+        and not boundary_261["safe"]
+        and boundary_261["classicLimitExceeded"]
+        and boundary_261["longest"]["pathLength"] == 261
+        and boundary_261_long["safe"]
+        and cache_boundary_261["safe"]
+        and cache_boundary_261["reconstructableCacheLimitExceeded"]
+        .get("classicLimitExceeded")
+        is True
+        and not component_report["safe"]
+        and component_report["componentLimitExceeded"]["componentLength"]
+        == backup.COMMON_COMPONENT_LIMIT + 1
+        and {item["sourcePath"] for item in selected_items}
+        == {"codex", "included"}
+    )
+
+
+def _destination_prompt_test() -> bool:
+    from . import gui
+
+    initial = gui.backup_destination_initial_directory(
+        [Path("F:/")], Path("C:/Users/Test/Documents")
+    )
+    with mock.patch.object(
+        gui.filedialog, "askdirectory", return_value="F:\\B"
+    ) as prompt:
+        selected = gui.ask_backup_destination(None, "Choose", initial)
+    call = prompt.call_args
+    return bool(
+        initial == str(Path("F:/") / "Codex Backups")
+        and selected == "F:\\B"
+        and prompt.call_count == 1
+        and call.kwargs.get("initialdir") == initial
+    )
+
+
+def _reconstructable_cache_policy_test(
+    root: Path, source_profile: Path
+) -> tuple[bool, bool]:
+    profile = root / "python-cache-user"
+    _copy_profile_fixture(source_profile, profile)
+    codex = profile / ".codex"
+    project = profile / "Documents" / "DemoProject"
+    cache_files = [
+        project / "standalone-cache.pyc",
+        project / "standalone-cache.pyo",
+        project / "__pycache__" / "generated.cache",
+    ]
+    for index, path in enumerate(cache_files):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(f"reconstructable-{index}".encode("ascii"))
+    source_before = _hash_tree(profile)
+    destination = root / "python-cache-usb"
+    config = root / "python-cache-config.json"
+    backup.write_json(
+        config,
+        {
+            "configVersion": 1,
+            "destinationRoot": str(destination),
+            "includeAttachments": True,
+            "projects": [{"path": str(project), "required": True}],
+            "additionalPortablePaths": [],
+            "excludeDirectoryNames": [],
+            "projectRegistryPath": str(
+                root / "python-cache-state" / "project-registry.json"
+            ),
+            "lineageStatePath": str(
+                root / "python-cache-state" / "lineage-state.json"
+            ),
+            "deviceStatePath": str(root / "python-cache-state" / "device.json"),
+        },
+    )
+    original_copy_file = backup.copy_file
+    cache_keys = {backup.normalized_source_key(path) for path in cache_files}
+
+    def fail_cache_copy(source: Path, destination_path: Path) -> None:
+        if backup.normalized_source_key(source) in cache_keys:
+            raise PermissionError(13, "cache file is locked", str(source))
+        original_copy_file(source, destination_path)
+
+    with mock.patch.object(backup, "copy_file", side_effect=fail_cache_copy):
+        package = backup.build_backup(
+            argparse.Namespace(
+                config=str(config),
+                destination=str(destination),
+                source_profile=str(profile),
+                source_codex_home=str(codex),
+                allow_running_test=True,
+            )
+        )
+
+    cache_report = backup.read_json(
+        package / "reports" / "skipped-python-cache.json"
+    )
+    package_manifest = backup.read_json(package / "manifest" / "package.json")
+    backup_report = backup.read_json(package / "reports" / "backup-report.json")
+    from .gui import _backup_result_model
+
+    result_model = _backup_result_model(package, validate(package, False))
+    reported_sources = {
+        str(item.get("sourcePath")) for item in cache_report.get("items", [])
+    }
+    cache_warning_complete = bool(
+        cache_report.get("count") == len(cache_files)
+        and reported_sources == {str(path) for path in cache_files}
+        and all(item.get("errorType") == "PermissionError" for item in cache_report["items"])
+        and package_manifest.get("backupComplete") is True
+        and package_manifest.get("counts", {}).get(
+            "skippedReconstructablePythonCache"
+        )
+        == len(cache_files)
+        and package_manifest.get("skippedReconstructablePythonCache", {}).get(
+            "reportRelativePath"
+        )
+        == "reports/skipped-python-cache.json"
+        and backup_report.get("skippedReconstructablePythonCache", {}).get("count")
+        == len(cache_files)
+        and result_model.get("valid") is True
+        and result_model.get("warningCount", 0) >= len(cache_files)
+        and result_model.get("warnings", {}).get("pythonCache") == len(cache_files)
+        and not (package / "INCOMPLETE.json").exists()
+        and source_before == _hash_tree(profile)
+    )
+    (package / "reports" / "skipped-python-cache.json").unlink()
+    missing_cache_report_rejected = not validate(package, False).get("valid")
+    cache_warning_complete = bool(
+        cache_warning_complete and missing_cache_report_rejected
+    )
+
+    strict_source = root / "mandatory-copy-source"
+    strict_destination = root / "mandatory-copy-destination"
+    strict_source.mkdir(parents=True)
+    mandatory_file = strict_source / "important-source.py"
+    mandatory_file.write_text("print('must be copied')\n", encoding="utf-8")
+    skipped: list[dict[str, Any]] = []
+    warnings: list[str] = []
+
+    def fail_mandatory_copy(_source: Path, _destination: Path) -> None:
+        raise PermissionError(13, "normal source file is locked", str(mandatory_file))
+
+    mandatory_failure: Exception | None = None
+    with mock.patch.object(backup, "copy_file", side_effect=fail_mandatory_copy):
+        try:
+            backup.copy_tree(
+                strict_source,
+                strict_destination,
+                [],
+                warnings,
+                skipped,
+            )
+        except Exception as exc:
+            mandatory_failure = exc
+    mandatory_stays_strict = bool(
+        isinstance(mandatory_failure, backup.BackupError)
+        and str(mandatory_file) in str(mandatory_failure)
+        and not skipped
+        and not warnings
+    )
+    return cache_warning_complete, mandatory_stays_strict
+
+
+def _rollout_resolution_test(
+    root: Path, source_profile: Path
+) -> tuple[bool, bool]:
+    results: list[bool] = []
+    for label, divergent in (("identical", False), ("different", True)):
+        profile = root / f"resolved-{label}-rollout-user"
+        _copy_profile_fixture(source_profile, profile)
+        codex = profile / ".codex"
+        connection = sqlite3.connect(codex / "state_5.sqlite")
+        try:
+            canonical_source = Path(
+                str(
+                    connection.execute(
+                        'SELECT "rollout_path" FROM "threads" WHERE "id"=?',
+                        (THREAD_ID,),
+                    ).fetchone()[0]
+                ).replace("\\\\?\\", "")
+            )
+        finally:
+            connection.close()
+        duplicate_source = (
+            codex / "archived_sessions" / f"duplicate-{label}-{THREAD_ID}.jsonl"
+        )
+        duplicate_source.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(canonical_source, duplicate_source)
+        if divergent:
+            with duplicate_source.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "timestamp": "2026-09-14T08:00:00Z",
+                            "type": "event_msg",
+                            "payload": {
+                                "type": "user_message",
+                                "message": "non-canonical divergent copy",
+                            },
+                        },
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                )
+        source_before = _hash_tree(profile)
+        destination = root / f"resolved-{label}-rollout-usb"
+        config = root / f"resolved-{label}-rollout-config.json"
+        backup.write_json(
+            config,
+            {
+                "configVersion": 1,
+                "destinationRoot": str(destination),
+                "includeAttachments": True,
+                "projects": [],
+                "additionalPortablePaths": [],
+                "excludeDirectoryNames": [],
+                "projectRegistryPath": str(
+                    root / f"resolved-{label}-state" / "project-registry.json"
+                ),
+                "lineageStatePath": str(
+                    root / f"resolved-{label}-state" / "lineage-state.json"
+                ),
+                "deviceStatePath": str(
+                    root / f"resolved-{label}-state" / "device.json"
+                ),
+            },
+        )
+        package = backup.build_backup(
+            argparse.Namespace(
+                config=str(config),
+                destination=str(destination),
+                source_profile=str(profile),
+                source_codex_home=str(codex),
+                allow_running_test=True,
+            )
+        )
+        resolution_report = backup.read_json(
+            package / "reports" / "rollout-resolution.json"
+        )
+        resolution = resolution_report.get("resolution", {})
+        resolved = resolution.get("resolved", [])
+        preserved = resolved[0].get("preservedNonCanonical", []) if resolved else []
+        preserved_relative = (
+            str(preserved[0].get("preservedBackupRelativePath"))
+            if preserved
+            else ""
+        )
+        canonical_relative = (
+            "codex/" + canonical_source.relative_to(codex).as_posix()
+        )
+        duplicate_relative = "codex/" + duplicate_source.relative_to(codex).as_posix()
+        threads = backup.read_json(package / "manifest" / "threads.json")
+        thread = next(item for item in threads if item.get("id") == THREAD_ID)
+        package_manifest = backup.read_json(package / "manifest" / "package.json")
+        backup_report = backup.read_json(package / "reports" / "backup-report.json")
+        package_valid = validate(package, False).get("valid")
+        preserved_payload = package / Path(*Path(preserved_relative).parts)
+        preserved_exact = bool(
+            preserved_payload.is_file()
+            and preserved_payload.read_bytes() == duplicate_source.read_bytes()
+        )
+        if preserved_payload.is_file():
+            preserved_payload.unlink()
+        missing_preserved_rejected = not validate(package, False).get("valid")
+        results.append(
+            bool(
+                package_valid
+                and resolution.get("resolvedDuplicateThreadIds") == [THREAD_ID]
+                and resolution.get("unresolvedDuplicateThreadIds") == []
+                and resolved[0].get("contentRelation")
+                == ("different" if divergent else "identical")
+                and resolved[0].get("canonical", {}).get("sourcePath")
+                == str(canonical_source)
+                and canonical_relative
+                == resolution.get("canonicalPathsByThreadId", {}).get(THREAD_ID)
+                and thread.get("backupRelativePath") == canonical_relative
+                and thread.get("rolloutCollection") == "sessions"
+                and len(preserved) == 1
+                and preserved_exact
+                and missing_preserved_rejected
+                and not (package / Path(*Path(duplicate_relative).parts)).exists()
+                and package_manifest.get("counts", {}).get(
+                    "resolvedDuplicateThreads"
+                )
+                == 1
+                and package_manifest.get("counts", {}).get(
+                    "nonCanonicalRolloutsPreserved"
+                )
+                == 1
+                and backup_report.get("rolloutResolution", {}).get(
+                    "resolvedDuplicateThreads"
+                )
+                == 1
+                and source_before == _hash_tree(profile)
+            )
+        )
+    return results[0], results[1]
+
+
 def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     root = (
         work_root.resolve()
@@ -1971,6 +2540,17 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     )
     _write_older_target(older_target_profile, "OLDER")
     source_before = _hash_tree(source_profile)
+    rollout_preflight_diagnostics = _rollout_preflight_diagnostics_test(
+        root, source_profile
+    )
+    path_budget_preflight = _path_budget_test(root)
+    destination_prompt = _destination_prompt_test()
+    reconstructable_cache_warning, mandatory_copy_failure = (
+        _reconstructable_cache_policy_test(root, source_profile)
+    )
+    identical_rollout_resolved, different_rollout_resolved = (
+        _rollout_resolution_test(root, source_profile)
+    )
     selection_preview = backup.build_backup_preview(source_profile, source_codex)
     preview_source_unchanged = source_before == _hash_tree(source_profile)
     preview_project = selection_preview.get("projects", [{}])[0]
@@ -1982,6 +2562,8 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         and preview_project.get("path") == str(source_project.resolve(strict=False))
         and preview_project.get("fileCount") == 3
         and preview_project.get("totalBytes") == 70
+        and bool(preview_project.get("pathBudgetItems"))
+        and bool(selection_preview.get("codex", {}).get("pathBudgetItems"))
         and selection_preview.get("totals", {}).get("fileCount", 0) > 3
         and selection_preview.get("totals", {}).get("totalBytes", 0) > 70
         and selection_preview.get("portabilityAudit", {}).get("status") == "portable"
@@ -2108,10 +2690,9 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     from .gui import _backup_result_model
 
     visual_backup_summary = _backup_result_model(package, package_validation)
-    # A frozen portable build includes its own executable in the backup so the
-    # same restore tool travels with the data. That adds one deliberately hashed
-    # payload file compared with a source-tree self-test.
-    expected_visual_file_count = 22 if getattr(sys, "frozen", False) else 21
+    # The path-budget evidence report is part of every package. A frozen portable
+    # build also includes its own executable so the restore tool travels with it.
+    expected_visual_file_count = 23 if getattr(sys, "frozen", False) else 22
     visual_backup_summary_complete = bool(
         visual_backup_summary.get("valid")
         and visual_backup_summary.get("metrics", {}).get("chats") == 3
@@ -3292,6 +3873,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     package_portability = backup.read_json(
         package / "reports" / "portability-audit.json"
     )
+    package_path_budget = backup.read_json(package / "reports" / "path-budget.json")
     package_portability_audit_complete = bool(
         package_manifest.get("portabilityAudit", {}).get("auditVersion")
         == portability_audit.AUDIT_VERSION
@@ -3299,12 +3881,28 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         and package_portability.get("privacy", {}).get("containsPathValues") is False
         and package_portability.get("summary", {}).get("needsReviewReferences") == 0
     )
+    package_path_budget_complete = bool(
+        package_path_budget.get("safe") is True
+        and package_path_budget.get("longest", {}).get("projectedPath")
+        and package_manifest.get("pathBudget", {}).get("reportRelativePath")
+        == "reports/path-budget.json"
+        and package_manifest.get("pathBudget", {}).get("safe") is True
+    )
     git_conflict_explanation, git_advisory_only = _git_conflict_insight_test(root)
     atomic_metadata_complete = _atomic_metadata_test(root)
     checks = {
         "packageValid": package_validation["valid"],
         "visualBackupSummaryComplete": visual_backup_summary_complete,
         "backupSelectionPreviewComplete": backup_selection_preview_complete,
+        "rolloutPreflightHasExactDiagnostics": rollout_preflight_diagnostics,
+        "destinationPathBudgetPreflight": (
+            path_budget_preflight and package_path_budget_complete
+        ),
+        "singleUsbStillPromptsForDestination": destination_prompt,
+        "unreadablePythonCacheWarnsAndContinues": reconstructable_cache_warning,
+        "unreadableNormalFileStillFailsClosed": mandatory_copy_failure,
+        "identicalDuplicateRolloutResolved": identical_rollout_resolved,
+        "differentDuplicateRolloutResolved": different_rollout_resolved,
         "selectiveProjectExclusionComplete": selective_project_exclusion_complete,
         "snapshotUsesSingleFileJournal": snapshot_journal_mode == "delete",
         "validatorIsReadOnly": package_validation.get("checks", {}).get(
@@ -3382,6 +3980,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "lineageRollbackPreserved": lineage_rollback_preserved,
         "safetyCopyKept": Path(prepared["safetyRoot"]).is_dir(),
         "newerSourceToOlderTarget": older_schema_restore_valid,
+        "stableOperationProgress": _progress_model_test(),
         "dutchEnglishGui": _gui_smoke_test(),
     }
     matrix = compatibility_matrix.build_matrix(checks)

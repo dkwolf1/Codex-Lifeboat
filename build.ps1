@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '3.4.4',
+    [string]$Version = '3.4.5',
     [string]$PythonPath,
     [switch]$SkipTests
 )
@@ -84,7 +84,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Building the Windows application failed.' }
 
 $exePath = Join-Path $releaseRoot 'Codex-Lifeboat.exe'
 if (-not $SkipTests) {
-    $packagedSelfTestRoot = Join-Path $buildRoot ("packaged-selftest-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    # Keep the packaged test root short: several fixtures intentionally exercise
+    # paths near Windows' legacy MAX_PATH boundary.
+    $packagedSelfTestRoot = Join-Path $buildRoot ("pst-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
     $packagedProcess = Start-Process `
         -FilePath $exePath `
         -ArgumentList @('--self-test', '--work', ('"{0}"' -f $packagedSelfTestRoot)) `

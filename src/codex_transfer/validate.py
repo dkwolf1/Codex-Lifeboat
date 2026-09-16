@@ -125,6 +125,11 @@ def validate(
             "warnings": [],
             "checks": {},
         }
+    if (package_root / "INCOMPLETE.json").is_file():
+        errors.append(
+            "Package contains INCOMPLETE.json and is diagnostic staging evidence, "
+            "not a restorable backup."
+        )
     for value in required:
         if not (package_root / value).is_file():
             errors.append(f"Required file missing: {value}")
@@ -287,6 +292,70 @@ def validate(
             f"counts.hashedFiles ({declared_hashed}) wijkt af van sha256.csv ({len(hash_rows)})."
         )
 
+    counts = package.get("counts", {}) if isinstance(package.get("counts"), dict) else {}
+    cache_meta = (
+        package.get("skippedReconstructablePythonCache", {})
+        if isinstance(package.get("skippedReconstructablePythonCache"), dict)
+        else {}
+    )
+    declared_cache_skips = counts.get("skippedReconstructablePythonCache", 0)
+    if cache_meta.get("count", 0) != declared_cache_skips:
+        errors.append(
+            "Skipped Python-cache count differs between package metadata and counts."
+        )
+    cache_report_relative = cache_meta.get("reportRelativePath")
+    cache_report_path = (
+        package_root / Path(*PurePosixPath(str(cache_report_relative)).parts)
+        if cache_report_relative
+        else None
+    )
+    if declared_cache_skips:
+        if not isinstance(declared_cache_skips, int) or declared_cache_skips < 0:
+            errors.append("Invalid skipped Python-cache count.")
+        elif not cache_report_relative or not valid_relative_path(
+            str(cache_report_relative)
+        ):
+            errors.append("Skipped Python-cache report path is missing or invalid.")
+        elif not cache_report_path or not cache_report_path.is_file():
+            errors.append("Skipped Python-cache report is missing.")
+        else:
+            try:
+                cache_report = read_json(cache_report_path)
+                cache_items = cache_report.get("items", [])
+                if (
+                    cache_report.get("count") != declared_cache_skips
+                    or not isinstance(cache_items, list)
+                    or len(cache_items) != declared_cache_skips
+                ):
+                    errors.append("Skipped Python-cache report count is inconsistent.")
+                else:
+                    for item in cache_items:
+                        backup_relative = str(item.get("backupRelativePath") or "")
+                        if not item.get("sourcePath") or not item.get("error"):
+                            errors.append(
+                                "Skipped Python-cache report item lacks source or error details."
+                            )
+                        if not valid_relative_path(backup_relative):
+                            errors.append(
+                                "Skipped Python-cache report contains an invalid backup path."
+                            )
+                        elif (
+                            package_root
+                            / Path(*PurePosixPath(backup_relative).parts)
+                        ).exists():
+                            errors.append(
+                                f"Skipped Python-cache payload unexpectedly exists: {backup_relative}"
+                            )
+                if str(cache_report_relative) not in hash_rows:
+                    errors.append("Skipped Python-cache report is not hash-protected.")
+            except Exception as exc:
+                errors.append(f"Skipped Python-cache report is invalid: {exc}")
+    elif cache_report_relative or (
+        package_root / "reports" / "skipped-python-cache.json"
+    ).exists():
+        errors.append("Skipped Python-cache report exists without a declared skipped file.")
+    checks["skippedReconstructablePythonCache"] = declared_cache_skips
+
     actual_all = {rel(path, package_root).lower() for path in package_root.rglob("*")}
     for forbidden in FORBIDDEN_CODEX_PATHS:
         if forbidden.lower() in actual_all:
@@ -416,8 +485,98 @@ def validate(
         errors.append(
             f"counts.sessionFiles ({declared_sessions}) differs from files ({len(session_files)})."
         )
+    noncanonical_root = package_root / "codex" / "unreferenced-rollouts"
+    noncanonical_files = {
+        rel(path, package_root)
+        for path in noncanonical_root.rglob("*.jsonl")
+        if path.is_file()
+    }
+    counts = package.get("counts", {}) if isinstance(package.get("counts"), dict) else {}
+    declared_noncanonical = counts.get("nonCanonicalRolloutsPreserved", 0)
+    if declared_noncanonical != len(noncanonical_files):
+        errors.append(
+            "counts.nonCanonicalRolloutsPreserved "
+            f"({declared_noncanonical}) differs from files ({len(noncanonical_files)})."
+        )
+    resolution_path = package_root / "reports" / "rollout-resolution.json"
+    resolved_threads: list[dict[str, Any]] = []
+    if (
+        noncanonical_files
+        or resolution_path.is_file()
+        or declared_noncanonical
+        or counts.get("resolvedDuplicateThreads", 0)
+    ):
+        try:
+            resolution_report = read_json(resolution_path)
+            resolution = resolution_report.get("resolution", {})
+            resolved_threads = resolution.get("resolved", [])
+            expected_preserved: dict[str, str] = {}
+            for resolved_item in resolved_threads:
+                thread_id = str(resolved_item.get("threadId", ""))
+                canonical = resolved_item.get("canonical", {})
+                canonical_path = str(canonical.get("backupRelativePath", ""))
+                if canonical_path not in referenced_rollouts:
+                    errors.append(
+                        f"Resolved duplicate {thread_id} has an unreferenced canonical rollout: "
+                        f"{canonical_path}"
+                    )
+                elif canonical_path in hash_rows and canonical.get("sha256") != hash_rows[
+                    canonical_path
+                ][1]:
+                    errors.append(
+                        f"Resolved duplicate {thread_id} canonical hash differs from "
+                        "rollout-resolution.json."
+                    )
+                for preserved in resolved_item.get("preservedNonCanonical", []):
+                    preserved_path = str(
+                        preserved.get("preservedBackupRelativePath", "")
+                    )
+                    if not valid_relative_path(preserved_path):
+                        errors.append(
+                            f"Resolved duplicate {thread_id} has an invalid preserved path."
+                        )
+                        continue
+                    if preserved_path in expected_preserved:
+                        errors.append(
+                            f"Preserved rollout path is declared more than once: {preserved_path}"
+                        )
+                    expected_preserved[preserved_path] = thread_id
+                    if preserved_path in hash_rows and preserved.get("sha256") != hash_rows[
+                        preserved_path
+                    ][1]:
+                        errors.append(
+                            f"Resolved duplicate {thread_id} preserved hash differs from "
+                            "rollout-resolution.json."
+                        )
+            if set(expected_preserved) != noncanonical_files:
+                errors.append(
+                    "Preserved non-canonical rollouts differ from rollout-resolution.json."
+                )
+            for preserved_path, thread_id in expected_preserved.items():
+                rollout = package_root / Path(*PurePosixPath(preserved_path).parts)
+                if not rollout.is_file():
+                    continue
+                rollout_id, rollout_error = parse_session_id(rollout)
+                if rollout_error:
+                    errors.append(
+                        f"Invalid preserved rollout {preserved_path}: {rollout_error}"
+                    )
+                elif rollout_id != thread_id:
+                    errors.append(
+                        f"Preserved rollout {preserved_path} belongs to {rollout_id}, "
+                        f"not {thread_id}."
+                    )
+            declared_resolved = counts.get("resolvedDuplicateThreads", 0)
+            if declared_resolved != len(resolved_threads):
+                errors.append(
+                    "counts.resolvedDuplicateThreads "
+                    f"({declared_resolved}) differs from report ({len(resolved_threads)})."
+                )
+        except Exception as exc:
+            errors.append(f"rollout-resolution.json is invalid: {exc}")
     checks["threadsChecked"] = len(manifest_thread_ids)
     checks["sessionFilesFound"] = len(session_files)
+    checks["nonCanonicalRolloutsChecked"] = len(noncanonical_files)
 
     try:
         projects = read_json(package_root / "manifest/projects.json")

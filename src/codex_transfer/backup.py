@@ -28,7 +28,7 @@ from . import atomic_io, lineage, path_model, project_identity, windows
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.4"
+GENERATOR_VERSION = "3.4.5"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -66,10 +66,210 @@ BLOCKED_CODEX_DIRS = {
 ATTACHMENT_PATTERN = re.compile(
     r"(?i)([a-z]:[\\/][^\x00\r\n\"<>|?*]{1,2048}?\.(?:png|jpe?g|webp|gif|bmp|pdf|docx?|xlsx?|pptx?|csv|zip))"
 )
+STAGING_NAME_PREFIX = ".clb-"
+STAGING_TOKEN_LENGTH = 12
+CLASSIC_WINDOWS_PATH_LIMIT = 260
+COMMON_COMPONENT_LIMIT = 255
 
 
 class BackupError(RuntimeError):
     pass
+
+
+def new_path_budget() -> dict[str, Any]:
+    return {
+        "longest": None,
+        "longestComponent": None,
+        "longestRequired": None,
+        "longestRequiredComponent": None,
+    }
+
+
+def record_projected_path(
+    budget: dict[str, Any],
+    source: Path,
+    package_relative: str,
+    *,
+    reconstructable_cache: bool = False,
+) -> None:
+    relative = PurePosixPath(package_relative).as_posix().lstrip("/")
+    if not relative or relative.startswith("../"):
+        return
+    item = {
+        "sourcePath": str(source),
+        "packageRelativePath": relative,
+        "reconstructablePythonCache": reconstructable_cache,
+    }
+    longest = budget.get("longest")
+    if longest is None or len(relative) > len(longest["packageRelativePath"]):
+        budget["longest"] = item
+    component = max(PurePosixPath(relative).parts, key=len)
+    longest_component = budget.get("longestComponent")
+    if longest_component is None or len(component) > int(
+        longest_component.get("componentLength", 0)
+    ):
+        budget["longestComponent"] = {
+            **item,
+            "component": component,
+            "componentLength": len(component),
+        }
+    if reconstructable_cache:
+        return
+    longest_required = budget.get("longestRequired")
+    if longest_required is None or len(relative) > len(
+        longest_required["packageRelativePath"]
+    ):
+        budget["longestRequired"] = item
+    longest_required_component = budget.get("longestRequiredComponent")
+    if longest_required_component is None or len(component) > int(
+        longest_required_component.get("componentLength", 0)
+    ):
+        budget["longestRequiredComponent"] = {
+            **item,
+            "component": component,
+            "componentLength": len(component),
+        }
+
+
+def path_budget_items(budget: dict[str, Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for key in (
+        "longest",
+        "longestComponent",
+        "longestRequired",
+        "longestRequiredComponent",
+    ):
+        item = budget.get(key)
+        if not isinstance(item, dict):
+            continue
+        identity = (str(item.get("sourcePath")), str(item.get("packageRelativePath")))
+        if identity not in seen:
+            seen.add(identity)
+            items.append(dict(item))
+    return items
+
+
+def destination_path_budget(
+    destination_root: Path,
+    items: Iterable[dict[str, Any]],
+    *,
+    long_paths: bool | None = None,
+) -> dict[str, Any]:
+    """Evaluate projected staging/final paths without creating destination data."""
+    destination_root = destination_root.resolve(strict=False)
+    setting = windows.long_paths_enabled() if long_paths is None else long_paths
+    staging_root = destination_root / (
+        STAGING_NAME_PREFIX + ("0" * STAGING_TOKEN_LENGTH)
+    )
+    # Reserve the collision suffix used when two backups finish in one second.
+    final_root = destination_root / "Codex-PortableBackup-YYYYMMDD-HHMMSS-000000"
+    longest: dict[str, Any] | None = None
+    longest_required: dict[str, Any] | None = None
+    component_problem: dict[str, Any] | None = None
+    reconstructable_cache_problem: dict[str, Any] | None = None
+    for item in items:
+        relative = str(item.get("packageRelativePath", ""))
+        if not relative:
+            continue
+        parts = PurePosixPath(relative).parts
+        for root_kind, root in (("staging", staging_root), ("final", final_root)):
+            projected = root.joinpath(*parts)
+            candidate = {
+                **item,
+                "rootKind": root_kind,
+                "projectedPath": str(projected),
+                "pathLength": len(str(projected)),
+            }
+            if longest is None or candidate["pathLength"] > longest["pathLength"]:
+                longest = candidate
+            reconstructable_cache = bool(item.get("reconstructablePythonCache"))
+            if not reconstructable_cache and (
+                longest_required is None
+                or candidate["pathLength"] > longest_required["pathLength"]
+            ):
+                longest_required = candidate
+            path_components = [part for part in projected.parts if part != projected.anchor]
+            if path_components:
+                component = max(path_components, key=len)
+                component_exceeded = len(component) > COMMON_COMPONENT_LIMIT
+                if not reconstructable_cache and component_exceeded and (
+                    component_problem is None
+                    or len(component) > component_problem["componentLength"]
+                ):
+                    component_problem = {
+                        **candidate,
+                        "component": component,
+                        "componentLength": len(component),
+                    }
+                classic_exceeded = bool(
+                    os.name == "nt"
+                    and setting is not True
+                    and candidate["pathLength"] >= CLASSIC_WINDOWS_PATH_LIMIT
+                )
+                if reconstructable_cache and (
+                    component_exceeded or classic_exceeded
+                ) and (
+                    reconstructable_cache_problem is None
+                    or candidate["pathLength"]
+                    > reconstructable_cache_problem["pathLength"]
+                ):
+                    reconstructable_cache_problem = {
+                        **candidate,
+                        "component": component,
+                        "componentLength": len(component),
+                        "classicLimitExceeded": classic_exceeded,
+                        "componentLimitExceeded": component_exceeded,
+                    }
+    longest = longest or {
+        "sourcePath": None,
+        "packageRelativePath": None,
+        "rootKind": "final",
+        "projectedPath": str(final_root),
+        "pathLength": len(str(final_root)),
+    }
+    longest_required = longest_required or {
+        "sourcePath": None,
+        "packageRelativePath": None,
+        "rootKind": "final",
+        "projectedPath": str(final_root),
+        "pathLength": len(str(final_root)),
+    }
+    classic_problem = bool(
+        os.name == "nt"
+        and setting is not True
+        and int(longest_required["pathLength"]) >= CLASSIC_WINDOWS_PATH_LIMIT
+    )
+    return {
+        "safe": not classic_problem and component_problem is None,
+        "longPathsEnabled": setting,
+        "classicLimit": CLASSIC_WINDOWS_PATH_LIMIT,
+        "componentLimit": COMMON_COMPONENT_LIMIT,
+        "longest": longest,
+        "longestRequired": longest_required,
+        "classicLimitExceeded": classic_problem,
+        "componentLimitExceeded": component_problem,
+        "reconstructableCacheLimitExceeded": reconstructable_cache_problem,
+    }
+
+
+def path_budget_error(report: dict[str, Any]) -> str:
+    problem = report.get("componentLimitExceeded") or report.get(
+        "longestRequired", {}
+    )
+    reason = (
+        f"a path component is {problem.get('componentLength')} characters "
+        f"(limit {report.get('componentLimit')})"
+        if report.get("componentLimitExceeded")
+        else f"the projected path is {problem.get('pathLength')} characters "
+        f"(classic limit {report.get('classicLimit')})"
+    )
+    return (
+        f"The selected backup destination is unsafe because {reason}. "
+        f"Source: {problem.get('sourcePath')}. "
+        f"Projected destination: {problem.get('projectedPath')}. "
+        "Choose a shorter destination folder or enable Windows long-path support."
+    )
 
 
 def required_backup_space(estimated_bytes: int) -> int:
@@ -365,11 +565,50 @@ def copy_file(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
+def is_reconstructable_python_cache(path: Path) -> bool:
+    """Return true only for disposable Python bytecode cache files."""
+    return bool(
+        path.suffix.casefold() in {".pyc", ".pyo"}
+        or any(part.casefold() == "__pycache__" for part in path.parts[:-1])
+    )
+
+
+def record_skipped_reconstructable_cache(
+    source: Path,
+    destination: Path,
+    error: OSError,
+    warnings: list[str],
+    records: list[dict[str, Any]] | None,
+) -> bool:
+    """Record a failed disposable-cache copy; return false for mandatory data."""
+    if not is_reconstructable_python_cache(source):
+        return False
+    try:
+        if destination.is_file():
+            destination.unlink()
+    except OSError:
+        pass
+    record = {
+        "sourcePath": str(source),
+        "destinationPath": str(destination),
+        "errorType": type(error).__name__,
+        "error": str(error),
+    }
+    if records is not None:
+        records.append(record)
+    warnings.append(
+        "Skipped reconstructable Python cache file after copy failure: "
+        f"{source}: {type(error).__name__}: {error}"
+    )
+    return True
+
+
 def copy_tree(
     source: Path,
     destination: Path,
     exclude_fragments: Iterable[str],
     warnings: list[str],
+    skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
 ) -> tuple[int, int]:
     count = 0
     byte_count = 0
@@ -385,6 +624,7 @@ def copy_tree(
         for entry in entries:
             entry_source = Path(entry.path)
             entry_destination = current_destination / entry.name
+            confirmed_file = False
             relative_text = os.path.relpath(entry_source, source).lower()
             if any(fragment and fragment in relative_text for fragment in excluded):
                 warnings.append(f"Excluded by configuration: {entry_source}")
@@ -396,6 +636,7 @@ def copy_tree(
                 if entry.is_dir(follow_symlinks=False):
                     stack.append((entry_source, entry_destination))
                 elif entry.is_file(follow_symlinks=False):
+                    confirmed_file = True
                     copy_file(entry_source, entry_destination)
                     size = entry.stat(follow_symlinks=False).st_size
                     count += 1
@@ -403,14 +644,30 @@ def copy_tree(
                     if count % 1000 == 0:
                         log(f"  ... copied {count} files from {source.name}")
             except OSError as exc:
+                if confirmed_file and record_skipped_reconstructable_cache(
+                    entry_source,
+                    entry_destination,
+                    exc,
+                    warnings,
+                    skipped_reconstructable_cache,
+                ):
+                    continue
                 raise BackupError(f"Copy failed for {entry_source}: {exc}") from exc
     return count, byte_count
 
 
-def tree_stats(source: Path, exclude_fragments: Iterable[str]) -> tuple[int, int]:
+def tree_stats(
+    source: Path,
+    exclude_fragments: Iterable[str],
+    *,
+    package_prefix: str | None = None,
+    path_budget: dict[str, Any] | None = None,
+) -> tuple[int, int]:
     count = 0
     byte_count = 0
     excluded = [value.replace("/", os.sep).lower() for value in exclude_fragments]
+    if path_budget is not None and package_prefix:
+        record_projected_path(path_budget, source, package_prefix)
     for root, directories, files in os.walk(source, followlinks=False):
         root_path = Path(root)
         directories[:] = [
@@ -423,6 +680,15 @@ def tree_stats(source: Path, exclude_fragments: Iterable[str]) -> tuple[int, int
                 if fragment
             )
         ]
+        if path_budget is not None and package_prefix:
+            for name in directories:
+                directory = root_path / name
+                relative = Path(os.path.relpath(directory, source))
+                record_projected_path(
+                    path_budget,
+                    directory,
+                    PurePosixPath(package_prefix, *relative.parts).as_posix(),
+                )
         for name in files:
             path = root_path / name
             if path.is_symlink():
@@ -433,19 +699,33 @@ def tree_stats(source: Path, exclude_fragments: Iterable[str]) -> tuple[int, int
             try:
                 byte_count += path.stat().st_size
                 count += 1
+                if path_budget is not None and package_prefix:
+                    relative = Path(os.path.relpath(path, source))
+                    record_projected_path(
+                        path_budget,
+                        path,
+                        PurePosixPath(package_prefix, *relative.parts).as_posix(),
+                        reconstructable_cache=is_reconstructable_python_cache(path),
+                    )
             except OSError:
                 pass
     return count, byte_count
 
 
 def tree_stats_with_breakdown(
-    source: Path, exclude_fragments: Iterable[str]
+    source: Path,
+    exclude_fragments: Iterable[str],
+    *,
+    package_prefix: str | None = None,
+    path_budget: dict[str, Any] | None = None,
 ) -> tuple[int, int, list[dict[str, Any]]]:
     """Return logical file usage and immediate-child totals without changing data."""
     count = 0
     byte_count = 0
     children: dict[str, dict[str, Any]] = {}
     excluded = [value.replace("/", os.sep).lower() for value in exclude_fragments]
+    if path_budget is not None and package_prefix:
+        record_projected_path(path_budget, source, package_prefix)
     for root, directories, files in os.walk(source, followlinks=False):
         root_path = Path(root)
         directories[:] = [
@@ -458,6 +738,15 @@ def tree_stats_with_breakdown(
                 if fragment
             )
         ]
+        if path_budget is not None and package_prefix:
+            for name in directories:
+                directory = root_path / name
+                relative = Path(os.path.relpath(directory, source))
+                record_projected_path(
+                    path_budget,
+                    directory,
+                    PurePosixPath(package_prefix, *relative.parts).as_posix(),
+                )
         for name in files:
             path = root_path / name
             if path.is_symlink():
@@ -478,6 +767,13 @@ def tree_stats_with_breakdown(
             item["totalBytes"] += size
             count += 1
             byte_count += size
+            if path_budget is not None and package_prefix:
+                record_projected_path(
+                    path_budget,
+                    path,
+                    PurePosixPath(package_prefix, *relative.parts).as_posix(),
+                    reconstructable_cache=is_reconstructable_python_cache(path),
+                )
     return (
         count,
         byte_count,
@@ -485,7 +781,9 @@ def tree_stats_with_breakdown(
     )
 
 
-def _portable_profile_stats(source_codex: Path) -> tuple[int, int, list[dict[str, Any]]]:
+def _portable_profile_stats(
+    source_codex: Path, path_budget: dict[str, Any] | None = None
+) -> tuple[int, int, list[dict[str, Any]]]:
     handled_names = {
         "sessions",
         "archived_sessions",
@@ -506,11 +804,24 @@ def _portable_profile_stats(source_codex: Path) -> tuple[int, int, list[dict[str
             continue
         if lowered in blocked_names or lowered in blocked_dirs or entry.is_symlink():
             continue
+        package_prefix = f"codex/portable-profile/{entry.name}"
         if entry.is_dir():
-            files, size = tree_stats(entry, [])
+            files, size = tree_stats(
+                entry,
+                [],
+                package_prefix=package_prefix,
+                path_budget=path_budget,
+            )
         elif entry.is_file():
             try:
                 files, size = 1, entry.stat().st_size
+                if path_budget is not None:
+                    record_projected_path(
+                        path_budget,
+                        entry,
+                        package_prefix,
+                        reconstructable_cache=is_reconstructable_python_cache(entry),
+                    )
             except OSError:
                 continue
         else:
@@ -555,13 +866,19 @@ def build_backup_preview(
     projects: list[dict[str, Any]] = []
     for index, item in enumerate(candidates, start=1):
         source = clean_windows_path(str(item["sourcePath"])).resolve(strict=False)
+        project_path_budget = new_path_budget()
         report_status(
             index - 1,
             max(len(candidates), 1),
             f"Scanning project {index}/{len(candidates)}: {source.name or source}",
         )
         if source.is_dir() and not broad_or_unsafe_project_path(source, profile, codex_home):
-            file_count, total_bytes, folders = tree_stats_with_breakdown(source, excludes)
+            file_count, total_bytes, folders = tree_stats_with_breakdown(
+                source,
+                excludes,
+                package_prefix="projects/root-00000000-0000-0000-0000-000000000000",
+                path_budget=project_path_budget,
+            )
         else:
             file_count, total_bytes, folders = 0, 0, []
         projects.append(
@@ -574,11 +891,14 @@ def build_backup_preview(
                 "largestFolders": folders[:8],
                 "origins": list(item.get("origins", [])),
                 "codexProjectIds": list(item.get("codexProjectIds", [])),
+                "pathBudgetItems": path_budget_items(project_path_budget),
             }
         )
 
+    codex_path_budget = new_path_budget()
     codex_files = 1
     codex_bytes = source_db.stat().st_size
+    record_projected_path(codex_path_budget, source_db, "codex/state.snapshot.sqlite")
     codex_details: list[dict[str, Any]] = [
         {"name": "state database", "fileCount": 1, "totalBytes": source_db.stat().st_size}
     ]
@@ -586,13 +906,20 @@ def build_backup_preview(
         directory = codex_home / directory_name
         if not directory.is_dir():
             continue
-        files, size = tree_stats(directory, [])
+        files, size = tree_stats(
+            directory,
+            [],
+            package_prefix=f"codex/{directory_name}",
+            path_budget=codex_path_budget,
+        )
         codex_files += files
         codex_bytes += size
         codex_details.append(
             {"name": directory_name, "fileCount": files, "totalBytes": size}
         )
-    profile_files, profile_bytes, profile_details = _portable_profile_stats(codex_home)
+    profile_files, profile_bytes, profile_details = _portable_profile_stats(
+        codex_home, codex_path_budget
+    )
     codex_files += profile_files
     codex_bytes += profile_bytes
     codex_details.extend(profile_details)
@@ -600,10 +927,14 @@ def build_backup_preview(
     if index_path.is_file():
         codex_files += 1
         codex_bytes += index_path.stat().st_size
+        record_projected_path(codex_path_budget, index_path, "codex/session_index.jsonl")
     state_path = codex_home / ".codex-global-state.json"
     if state_path.is_file():
         codex_files += 1
         codex_bytes += state_path.stat().st_size
+        record_projected_path(
+            codex_path_budget, state_path, "codex/portable-global-state.json"
+        )
 
     runtime_bytes = 0
     if getattr(sys, "frozen", False):
@@ -629,6 +960,7 @@ def build_backup_preview(
             "totalBytes": codex_bytes,
             "attachmentsMeasured": False,
             "largestFolders": codex_details[:8],
+            "pathBudgetItems": path_budget_items(codex_path_budget),
             "locked": True,
         },
         "projects": projects,
@@ -639,6 +971,23 @@ def build_backup_preview(
             "projectCount": len(projects),
         },
     }
+
+
+def preview_path_budget_items(
+    preview: dict[str, Any], excluded_project_paths: Iterable[str] = ()
+) -> list[dict[str, Any]]:
+    """Return projected paths for the selected portion of a backup preview."""
+    excluded = {
+        normalized_source_key(clean_windows_path(str(value)))
+        for value in excluded_project_paths
+    }
+    items = list((preview.get("codex") or {}).get("pathBudgetItems", []))
+    for project in preview.get("projects", []):
+        source = clean_windows_path(str(project.get("path", "")))
+        if normalized_source_key(source) in excluded:
+            continue
+        items.extend(project.get("pathBudgetItems", []))
+    return items
 
 
 def parse_session_meta(path: Path) -> tuple[str | None, str | None]:
@@ -657,8 +1006,13 @@ def parse_session_meta(path: Path) -> tuple[str | None, str | None]:
 
 
 def copy_sessions(
-    source_codex: Path, package_root: Path
+    source_codex: Path,
+    package_root: Path,
+    *,
+    copy_files: bool = True,
+    canonical_paths: dict[str, str] | None = None,
 ) -> tuple[dict[str, list[str]], list[dict[str, str]], int]:
+    """Inventory rollout metadata and optionally copy the rollout payloads."""
     by_id: dict[str, list[str]] = {}
     invalid: list[dict[str, str]] = []
     count = 0
@@ -669,15 +1023,222 @@ def copy_sessions(
         for source in sorted(source_root.rglob("*.jsonl")):
             relative = source.relative_to(source_root)
             destination = package_root / "codex" / directory_name / relative
-            copy_file(source, destination)
-            count += 1
-            thread_id, error = parse_session_meta(destination)
             backup_relative = portable_relative(destination, package_root)
+            thread_id, error = parse_session_meta(source)
             if error:
-                invalid.append({"relativePath": backup_relative, "error": error})
-            else:
-                by_id.setdefault(thread_id or "", []).append(backup_relative)
+                invalid.append(
+                    {
+                        "sourcePath": str(source),
+                        "relativePath": backup_relative,
+                        "error": error,
+                    }
+                )
+                continue
+            canonical = (canonical_paths or {}).get(thread_id or "")
+            if copy_files and canonical and canonical != backup_relative:
+                relative_parts = PurePosixPath(backup_relative).parts
+                destination = package_root.joinpath(
+                    "codex", "unreferenced-rollouts", *relative_parts[1:]
+                )
+                copy_file(source, destination)
+                continue
+            if copy_files:
+                copy_file(source, destination)
+                copied_thread_id, copied_error = parse_session_meta(destination)
+                if copied_error or copied_thread_id != thread_id:
+                    invalid.append(
+                        {
+                            "sourcePath": str(source),
+                            "relativePath": backup_relative,
+                            "error": copied_error or "thread id changed while copying",
+                        }
+                    )
+                    continue
+            count += 1
+            by_id.setdefault(thread_id or "", []).append(backup_relative)
     return by_id, invalid, count
+
+
+def rollout_validation_report(
+    database_threads: list[dict[str, Any]],
+    session_map: dict[str, list[str]],
+    source_codex: Path,
+) -> dict[str, Any]:
+    """Describe missing and duplicate rollouts without modifying the source."""
+    missing: list[dict[str, Any]] = []
+    duplicates: list[dict[str, Any]] = []
+    for row in database_threads:
+        thread_id = str(row.get("id", ""))
+        matches = session_map.get(thread_id, [])
+        database_path = str(row.get("rollout_path") or "")
+        if not matches:
+            missing.append(
+                {
+                    "threadId": thread_id,
+                    "databaseRolloutPath": database_path or None,
+                }
+            )
+            continue
+        if len(matches) < 2:
+            continue
+        candidates: list[dict[str, Any]] = []
+        for relative in matches:
+            relative_parts = PurePosixPath(relative).parts
+            source = source_codex.joinpath(*relative_parts[1:])
+            candidate: dict[str, Any] = {
+                "sourcePath": str(source),
+                "backupRelativePath": relative,
+                "collection": relative_parts[1] if len(relative_parts) > 1 else None,
+                "matchesDatabaseRolloutPath": bool(
+                    database_path
+                    and normalized_source_key(source)
+                    == normalized_source_key(clean_windows_path(database_path))
+                ),
+            }
+            try:
+                stat = source.stat()
+                candidate["sizeBytes"] = stat.st_size
+                candidate["modifiedAtUtc"] = (
+                    dt.datetime.fromtimestamp(stat.st_mtime, dt.timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                )
+                candidate["sha256"] = sha256_file(source)
+            except OSError as exc:
+                candidate["inspectionError"] = str(exc)
+            candidates.append(candidate)
+        duplicates.append(
+            {
+                "threadId": thread_id,
+                "databaseRolloutPath": database_path or None,
+                "databaseArchived": bool(row.get("archived")),
+                "expectedCollection": (
+                    "archived_sessions" if bool(row.get("archived")) else "sessions"
+                ),
+                "candidateHashesMatch": bool(
+                    len(candidates) > 1
+                    and all(candidate.get("sha256") for candidate in candidates)
+                    and len({candidate["sha256"] for candidate in candidates}) == 1
+                ),
+                "candidates": candidates,
+            }
+        )
+    return {
+        "reportVersion": 1,
+        "checkedAtUtc": utc_now(),
+        "missingThreadIds": [item["threadId"] for item in missing],
+        "duplicateThreadIds": [item["threadId"] for item in duplicates],
+        "missingRollouts": missing,
+        "duplicateRollouts": duplicates,
+    }
+
+
+def rollout_validation_message(report: dict[str, Any], report_path: Path) -> str:
+    """Return an actionable summary while keeping complete evidence in JSON."""
+    missing = report.get("missingRollouts", [])
+    duplicates = report.get("duplicateRollouts", [])
+    resolution = report.get("resolution", {})
+    if "unresolvedDuplicateThreadIds" in resolution:
+        unresolved_ids = set(resolution.get("unresolvedDuplicateThreadIds", []))
+        duplicates = [
+            item for item in duplicates if item.get("threadId") in unresolved_ids
+        ]
+    lines = [
+        "Rollout validation failed: "
+        f"{len(missing)} missing, {len(duplicates)} duplicate."
+    ]
+    if missing:
+        item = missing[0]
+        lines.append(
+            f"Missing rollout for thread {item.get('threadId')}; "
+            f"database path: {item.get('databaseRolloutPath') or '(empty)'}."
+        )
+    if duplicates:
+        item = duplicates[0]
+        lines.append(f"Duplicate rollout for thread {item.get('threadId')}:")
+        lines.extend(
+            f"- {candidate.get('sourcePath')}"
+            for candidate in item.get("candidates", [])
+        )
+    if len(missing) + len(duplicates) > 1:
+        lines.append("Only the first problem is shown above.")
+    lines.append(f"Full details: {report_path}")
+    return "\n".join(lines)
+
+
+def rollout_resolution_plan(report: dict[str, Any]) -> dict[str, Any]:
+    """Select only a uniquely database-backed rollout and preserve every alternative."""
+    canonical_paths: dict[str, str] = {}
+    resolved: list[dict[str, Any]] = []
+    unresolved: list[dict[str, str]] = []
+    for item in report.get("duplicateRollouts", []):
+        thread_id = str(item.get("threadId", ""))
+        expected_collection = str(item.get("expectedCollection", ""))
+        candidates = list(item.get("candidates", []))
+        authoritative = [
+            candidate
+            for candidate in candidates
+            if candidate.get("matchesDatabaseRolloutPath") is True
+            and candidate.get("collection") == expected_collection
+            and candidate.get("sha256")
+        ]
+        if len(authoritative) != 1:
+            reason = (
+                "no candidate matches both the database rollout path and expected collection"
+                if not authoritative
+                else "more than one candidate matches the database rollout path and expected collection"
+            )
+            unresolved.append({"threadId": thread_id, "reason": reason})
+            continue
+        canonical = authoritative[0]
+        canonical_relative = str(canonical["backupRelativePath"])
+        canonical_paths[thread_id] = canonical_relative
+        preserved: list[dict[str, Any]] = []
+        for candidate in candidates:
+            candidate_relative = str(candidate.get("backupRelativePath", ""))
+            if candidate_relative == canonical_relative:
+                continue
+            parts = PurePosixPath(candidate_relative).parts
+            preserved_relative = PurePosixPath(
+                "codex", "unreferenced-rollouts", *parts[1:]
+            ).as_posix()
+            preserved.append(
+                {
+                    **candidate,
+                    "preservedBackupRelativePath": preserved_relative,
+                }
+            )
+        resolved.append(
+            {
+                "threadId": thread_id,
+                "basis": "database-path-and-expected-collection",
+                "contentRelation": (
+                    "identical" if item.get("candidateHashesMatch") else "different"
+                ),
+                "canonical": canonical,
+                "preservedNonCanonical": preserved,
+            }
+        )
+    return {
+        "resolvedDuplicateThreadIds": [item["threadId"] for item in resolved],
+        "unresolvedDuplicateThreadIds": [item["threadId"] for item in unresolved],
+        "canonicalPathsByThreadId": canonical_paths,
+        "resolved": resolved,
+        "unresolved": unresolved,
+    }
+
+
+def select_canonical_session_map(
+    session_map: dict[str, list[str]], canonical_paths: dict[str, str]
+) -> dict[str, list[str]]:
+    return {
+        thread_id: (
+            [canonical_paths[thread_id]]
+            if thread_id in canonical_paths
+            else list(paths)
+        )
+        for thread_id, paths in session_map.items()
+    }
 
 
 def read_session_index(source: Path) -> dict[str, Any]:
@@ -1042,7 +1603,10 @@ def analyze_project_candidates(candidates: list[dict[str, Any]]) -> dict[str, An
 
 
 def copy_portable_codex_profile(
-    source_codex: Path, package_root: Path, warnings: list[str]
+    source_codex: Path,
+    package_root: Path,
+    warnings: list[str],
+    skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Copy all user data not classified as identity/runtime/live database state."""
     destination_root = package_root / "codex" / "portable-profile"
@@ -1069,10 +1633,28 @@ def copy_portable_codex_profile(
             warnings.append(f"Codex symbolic link or reparse point skipped: {entry}")
             continue
         if entry.is_dir():
-            count, size = copy_tree(entry, package_root / relative, [], warnings)
+            count, size = copy_tree(
+                entry,
+                package_root / relative,
+                [],
+                warnings,
+                skipped_reconstructable_cache,
+            )
         elif entry.is_file():
-            copy_file(entry, package_root / relative)
-            count, size = 1, entry.stat().st_size
+            destination = package_root / relative
+            try:
+                copy_file(entry, destination)
+                count, size = 1, entry.stat().st_size
+            except OSError as exc:
+                if record_skipped_reconstructable_cache(
+                    entry,
+                    destination,
+                    exc,
+                    warnings,
+                    skipped_reconstructable_cache,
+                ):
+                    continue
+                raise BackupError(f"Copy failed for {entry}: {exc}") from exc
         else:
             continue
         records.append(
@@ -1111,6 +1693,7 @@ def copy_projects(
     identity_registry: dict[str, Any],
     exclude_fragments: list[str],
     warnings: list[str],
+    skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     projects: list[dict[str, Any]] = []
     mappings: list[dict[str, Any]] = []
@@ -1182,7 +1765,11 @@ def copy_projects(
             )
         log(f"Copying project: {source}")
         file_count, byte_count = copy_tree(
-            source, package_root / relative, exclude_fragments, warnings
+            source,
+            package_root / relative,
+            exclude_fragments,
+            warnings,
+            skipped_reconstructable_cache,
         )
         projects.append(
             {
@@ -1373,15 +1960,11 @@ def copy_attachments(
     return copied, missing
 
 
-def copy_extras(
+def configured_extra_sources(
     config: dict[str, Any],
-    package_root: Path,
-    warnings: list[str],
-    source_profile: Path,
-    known_folders: dict[str, str],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    records: list[dict[str, Any]] = []
-    mappings: list[dict[str, Any]] = []
+) -> list[tuple[dict[str, Any], Path, str]]:
+    """Resolve configured extra sources and their stable package directories."""
+    resolved: list[tuple[dict[str, Any], Path, str]] = []
     used_names: set[str] = set()
     for index, item in enumerate(config.get("additionalPortablePaths", []), start=1):
         source = clean_windows_path(str(item.get("path", "")))
@@ -1390,7 +1973,21 @@ def copy_extras(
         if name.lower() in used_names:
             raise BackupError(f"Duplicate additionalPortablePaths name: {name}")
         used_names.add(name.lower())
-        relative = f"extra/{name}"
+        resolved.append((item, source, f"extra/{name}"))
+    return resolved
+
+
+def copy_extras(
+    config: dict[str, Any],
+    package_root: Path,
+    warnings: list[str],
+    source_profile: Path,
+    known_folders: dict[str, str],
+    skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    records: list[dict[str, Any]] = []
+    mappings: list[dict[str, Any]] = []
+    for item, source, relative in configured_extra_sources(config):
         exists = source.exists()
         mapping = {
             "mappingKind": "extra",
@@ -1415,11 +2012,28 @@ def copy_extras(
                 f"The temporary backup directory is inside extra source {source}; this would recurse."
             )
         if source.is_dir():
-            count, size = copy_tree(source, package_root / relative, [], warnings)
+            count, size = copy_tree(
+                source,
+                package_root / relative,
+                [],
+                warnings,
+                skipped_reconstructable_cache,
+            )
         elif source.is_file():
             destination = package_root / relative / source.name
-            copy_file(source, destination)
-            count, size = 1, source.stat().st_size
+            try:
+                copy_file(source, destination)
+                count, size = 1, source.stat().st_size
+            except OSError as exc:
+                if record_skipped_reconstructable_cache(
+                    source,
+                    destination,
+                    exc,
+                    warnings,
+                    skipped_reconstructable_cache,
+                ):
+                    continue
+                raise BackupError(f"Copy failed for {source}: {exc}") from exc
             mapping["backupRelativePath"] = portable_relative(destination, package_root)
         else:
             warnings.append(f"Skipped non-regular extra source: {source}")
@@ -1842,6 +2456,52 @@ def load_config(path: Path) -> dict[str, Any]:
     return config
 
 
+def incomplete_staging_report(
+    building: Path, phase: str, error: BaseException
+) -> dict[str, Any]:
+    """Describe retained staging evidence without treating it as restorable data."""
+    file_count = 0
+    byte_count = 0
+    report_paths: list[str] = []
+    try:
+        for root, _directories, files in os.walk(building, followlinks=False):
+            root_path = Path(root)
+            for name in files:
+                path = root_path / name
+                if path.name == "INCOMPLETE.json" or path.is_symlink():
+                    continue
+                file_count += 1
+                try:
+                    byte_count += path.stat().st_size
+                except OSError:
+                    pass
+                try:
+                    relative = portable_relative(path, building)
+                except ValueError:
+                    continue
+                if relative.startswith("reports/"):
+                    report_paths.append(relative)
+    except OSError:
+        pass
+    return {
+        "incomplete": True,
+        "restorable": False,
+        "createdAtUtc": utc_now(),
+        "phase": phase,
+        "cause": {
+            "type": type(error).__name__,
+            "message": str(error),
+        },
+        "stagedFileCount": file_count,
+        "stagedBytes": byte_count,
+        "availableReports": sorted(set(report_paths)),
+        "instruction": (
+            "This directory is retained only for diagnostics and must not be used "
+            "as a restore source. Start a new backup after correcting the cause."
+        ),
+    }
+
+
 def build_backup(args: argparse.Namespace) -> Path:
     script_path = Path(__file__).resolve()
     toolkit_root = script_path.parent.parent
@@ -1899,6 +2559,17 @@ def build_backup(args: argparse.Namespace) -> Path:
     if not source_db.is_file():
         raise BackupError(f"Codex database not found: {source_db}")
     check_codex_not_running(source_codex, bool(args.allow_running_test))
+    base_path_budget = destination_path_budget(
+        destination_root,
+        [
+            {
+                "sourcePath": str(source_db),
+                "packageRelativePath": "codex/state.snapshot.sqlite",
+            }
+        ],
+    )
+    if not base_path_budget["safe"]:
+        raise BackupError(path_budget_error(base_path_budget))
     destination_root.mkdir(parents=True, exist_ok=True)
     if normalized_source_key(destination_root).startswith(normalized_source_key(source_codex) + os.sep):
         raise BackupError("The destination directory cannot be inside the Codex source directory.")
@@ -1908,11 +2579,15 @@ def build_backup(args: argparse.Namespace) -> Path:
     final_path = destination_root / final_name
     if final_path.exists():
         final_path = destination_root / f"{final_name}-{uuid.uuid4().hex[:6]}"
-    building = destination_root / f".building-{final_path.name}-{uuid.uuid4().hex[:8]}"
+    building = destination_root / (
+        STAGING_NAME_PREFIX + uuid.uuid4().hex[:STAGING_TOKEN_LENGTH]
+    )
     building.mkdir(parents=True)
     error_path = building / "reports" / "backup-error.txt"
     warnings: list[str] = []
+    skipped_reconstructable_cache: list[dict[str, Any]] = []
     lineage_manifest: dict[str, Any] | None = None
+    current_phase = "snapshot"
 
     try:
         log(f"Temporary package: {building}")
@@ -1923,8 +2598,56 @@ def build_backup(args: argparse.Namespace) -> Path:
         log(
             f"SQLite snapshot is consistent; found {len(database_info['threads'])} conversations."
         )
+        log("Preflight: inventorying conversation rollouts before copying payload data...")
+        current_phase = "rollout-preflight"
+        preflight_session_map, preflight_invalid_sessions, preflight_session_count = (
+            copy_sessions(source_codex, building, copy_files=False)
+        )
+        invalid_sessions_path = building / "reports" / "invalid-sessions.json"
+        if preflight_invalid_sessions:
+            write_json(invalid_sessions_path, preflight_invalid_sessions)
+            first_invalid = preflight_invalid_sessions[0]
+            raise BackupError(
+                f"{len(preflight_invalid_sessions)} session file(s) contain invalid metadata. "
+                f"First invalid rollout: {first_invalid.get('sourcePath')}. "
+                f"Full details: {invalid_sessions_path}"
+            )
+        rollout_errors_path = building / "reports" / "rollout-errors.json"
+        preflight_rollout_report = rollout_validation_report(
+            database_info["threads"], preflight_session_map, source_codex
+        )
+        rollout_resolution = rollout_resolution_plan(preflight_rollout_report)
+        preflight_rollout_report["resolution"] = rollout_resolution
+        if (
+            preflight_rollout_report["missingThreadIds"]
+            or rollout_resolution["unresolvedDuplicateThreadIds"]
+        ):
+            write_json(rollout_errors_path, preflight_rollout_report)
+            raise BackupError(
+                rollout_validation_message(preflight_rollout_report, rollout_errors_path)
+            )
+        canonical_paths = rollout_resolution["canonicalPathsByThreadId"]
+        expected_session_map = select_canonical_session_map(
+            preflight_session_map, canonical_paths
+        )
+        expected_session_count = sum(len(paths) for paths in expected_session_map.values())
+        rollout_resolution_path = building / "reports" / "rollout-resolution.json"
+        resolved_duplicate_count = len(
+            rollout_resolution["resolvedDuplicateThreadIds"]
+        )
+        preserved_noncanonical_count = sum(
+            len(item.get("preservedNonCanonical", []))
+            for item in rollout_resolution["resolved"]
+        )
+        if resolved_duplicate_count:
+            write_json(rollout_resolution_path, preflight_rollout_report)
+            warnings.append(
+                f"Resolved {resolved_duplicate_count} duplicate rollout thread(s) using "
+                "the unique database path and expected collection; preserved "
+                f"{preserved_noncanonical_count} non-canonical rollout file(s)."
+            )
         portable_state = read_portable_state(source_codex)
-        portable_profile = copy_portable_codex_profile(source_codex, building, warnings)
+        current_phase = "source-inventory"
         all_candidates = collect_project_candidates(config, database_info, portable_state)
         from . import portability_audit
 
@@ -1977,26 +2700,132 @@ def build_backup(args: argparse.Namespace) -> Path:
         excludes = [str(item) for item in config.get("excludeDirectoryNames", [])]
 
         report_status(0, 0, "Step 2/6 — Calculating required backup space...")
+        current_phase = "capacity-and-path-preflight"
+        projected_paths = new_path_budget()
+        record_projected_path(
+            projected_paths, source_db, "codex/state.snapshot.sqlite"
+        )
         estimated_bytes = source_db.stat().st_size
         for directory_name in ("sessions", "archived_sessions"):
             directory = source_codex / directory_name
             if directory.is_dir():
                 estimated_bytes += tree_stats(directory, [])[1]
+        for thread_id, relatives in preflight_session_map.items():
+            canonical_relative = canonical_paths.get(thread_id)
+            for relative in relatives:
+                parts = PurePosixPath(relative).parts
+                source = source_codex.joinpath(*parts[1:])
+                package_relative = relative
+                if canonical_relative and relative != canonical_relative:
+                    package_relative = PurePosixPath(
+                        "codex", "unreferenced-rollouts", *parts[1:]
+                    ).as_posix()
+                record_projected_path(projected_paths, source, package_relative)
+
+        _, profile_bytes, _ = _portable_profile_stats(
+            source_codex, projected_paths
+        )
+        estimated_bytes += profile_bytes
+        index_source = source_codex / "session_index.jsonl"
+        if index_source.is_file():
+            estimated_bytes += index_source.stat().st_size
+            record_projected_path(
+                projected_paths, index_source, "codex/session_index.jsonl"
+            )
+        global_state_source = source_codex / ".codex-global-state.json"
+        if global_state_source.is_file():
+            estimated_bytes += global_state_source.stat().st_size
+            record_projected_path(
+                projected_paths,
+                global_state_source,
+                "codex/portable-global-state.json",
+            )
+
         for item in candidates:
             path = clean_windows_path(item["sourcePath"])
             if path.is_dir() and not broad_or_unsafe_project_path(path, source_profile, source_codex):
-                estimated_bytes += tree_stats(path, excludes)[1]
+                estimated_bytes += tree_stats(
+                    path,
+                    excludes,
+                    package_prefix="projects/root-00000000-0000-0000-0000-000000000000",
+                    path_budget=projected_paths,
+                )[1]
+
+        for extra, source, relative in configured_extra_sources(config):
+            if not source.exists():
+                if extra.get("required", True):
+                    raise BackupError(f"Required extra source does not exist: {source}")
+                continue
+            if source.is_dir():
+                estimated_bytes += tree_stats(
+                    source,
+                    [],
+                    package_prefix=relative,
+                    path_budget=projected_paths,
+                )[1]
+            elif source.is_file():
+                estimated_bytes += source.stat().st_size
+                record_projected_path(
+                    projected_paths,
+                    source,
+                    f"{relative}/{source.name}",
+                    reconstructable_cache=is_reconstructable_python_cache(source),
+                )
+
+        if bool(config.get("includeAttachments", True)):
+            canonical_session_files = [
+                source_codex.joinpath(*PurePosixPath(relative).parts[1:])
+                for relatives in expected_session_map.values()
+                for relative in relatives
+            ]
+            for original in find_attachment_paths(canonical_session_files):
+                source = clean_windows_path(original)
+                try:
+                    source_present = attachment_source_is_file(source)
+                except OSError:
+                    source_present = False
+                if not source_present:
+                    continue
+                estimated_bytes += source.stat().st_size
+                record_projected_path(
+                    projected_paths,
+                    source,
+                    f"attachments/attachment-{stable_id(source)}/{source.name}",
+                )
+
+        path_budget_report = destination_path_budget(
+            destination_root, path_budget_items(projected_paths)
+        )
+        write_json(building / "reports" / "path-budget.json", path_budget_report)
+        if not path_budget_report["safe"]:
+            raise BackupError(path_budget_error(path_budget_report))
         free_bytes = shutil.disk_usage(destination_root).free
         ensure_backup_space(estimated_bytes, free_bytes)
 
         report_status(0, 0, "Step 3/6 — Copying conversations and selected projects...")
-        session_map, invalid_sessions, session_count = copy_sessions(source_codex, building)
+        current_phase = "payload-copy"
+        session_map, invalid_sessions, session_count = copy_sessions(
+            source_codex, building, canonical_paths=canonical_paths
+        )
         if invalid_sessions:
-            write_json(building / "reports" / "invalid-sessions.json", invalid_sessions)
+            write_json(invalid_sessions_path, invalid_sessions)
             raise BackupError(
-                f"{len(invalid_sessions)} session file(s) contain invalid metadata."
+                f"{len(invalid_sessions)} session file(s) changed or contain invalid metadata. "
+                f"Full details: {invalid_sessions_path}"
             )
-        index_source = source_codex / "session_index.jsonl"
+        if (
+            session_map != expected_session_map
+            or session_count != expected_session_count
+        ):
+            changed_report = rollout_validation_report(
+                database_info["threads"], session_map, source_codex
+            )
+            changed_report["sourceChangedAfterPreflight"] = True
+            write_json(rollout_errors_path, changed_report)
+            raise BackupError(
+                "Conversation rollouts changed after preflight; the backup stopped "
+                f"without copying project data. Full details: {rollout_errors_path}"
+            )
         session_index = read_session_index(index_source)
         index_thread_ids = set(session_index["threadIds"])
         if session_index["invalidLines"]:
@@ -2045,14 +2874,20 @@ def build_backup(args: argparse.Namespace) -> Path:
                 }
             )
         if missing_rollouts or duplicate_rollouts:
-            write_json(
-                building / "reports" / "rollout-errors.json",
-                {"missingThreadIds": missing_rollouts, "duplicateThreadIds": duplicate_rollouts},
+            rollout_report = rollout_validation_report(
+                database_info["threads"], session_map, source_codex
             )
+            write_json(rollout_errors_path, rollout_report)
             raise BackupError(
-                f"Rollout validation failed: {len(missing_rollouts)} missing, "
-                f"{len(duplicate_rollouts)} duplicate."
+                rollout_validation_message(rollout_report, rollout_errors_path)
             )
+
+        portable_profile = copy_portable_codex_profile(
+            source_codex,
+            building,
+            warnings,
+            skipped_reconstructable_cache,
+        )
 
         if index_source.is_file():
             copy_file(index_source, building / "codex" / "session_index.jsonl")
@@ -2066,6 +2901,7 @@ def build_backup(args: argparse.Namespace) -> Path:
             identity_registry,
             excludes,
             warnings,
+            skipped_reconstructable_cache,
         )
         unresolved = unresolved_cwds(database_info["threads"], candidates)
         for cwd in unresolved:
@@ -2081,8 +2917,40 @@ def build_backup(args: argparse.Namespace) -> Path:
             source_known_folders,
         )
         extras, extra_mappings = copy_extras(
-            config, building, warnings, source_profile, source_known_folders
+            config,
+            building,
+            warnings,
+            source_profile,
+            source_known_folders,
+            skipped_reconstructable_cache,
         )
+
+        skipped_cache_report_path = building / "reports" / "skipped-python-cache.json"
+        if skipped_reconstructable_cache:
+            skipped_cache_items: list[dict[str, Any]] = []
+            for item in skipped_reconstructable_cache:
+                destination = Path(str(item.get("destinationPath", "")))
+                try:
+                    backup_relative = portable_relative(destination, building)
+                except ValueError:
+                    backup_relative = None
+                skipped_cache_items.append(
+                    {
+                        "sourcePath": item.get("sourcePath"),
+                        "backupRelativePath": backup_relative,
+                        "errorType": item.get("errorType"),
+                        "error": item.get("error"),
+                    }
+                )
+            write_json(
+                skipped_cache_report_path,
+                {
+                    "reportVersion": 1,
+                    "createdAtUtc": utc_now(),
+                    "count": len(skipped_cache_items),
+                    "items": skipped_cache_items,
+                },
+            )
 
         orphan_session_ids = sorted(set(session_map) - {item["id"] for item in thread_manifest})
         if orphan_session_ids:
@@ -2179,6 +3047,10 @@ def build_backup(args: argparse.Namespace) -> Path:
                     item["collection"] == "archived_sessions" for item in session_records
                 ),
                 "orphanThreadIds": orphan_session_ids,
+                "resolvedDuplicateThreadIds": rollout_resolution[
+                    "resolvedDuplicateThreadIds"
+                ],
+                "nonCanonicalRolloutsPreserved": preserved_noncanonical_count,
             },
             "projects": {
                 "items": project_inventory,
@@ -2224,9 +3096,34 @@ def build_backup(args: argparse.Namespace) -> Path:
             "warnings": warnings,
             "unresolvedExistingThreadCwds": unresolved,
             "orphanSessionIds": orphan_session_ids,
+            "rolloutResolution": {
+                "reportRelativePath": (
+                    "reports/rollout-resolution.json"
+                    if resolved_duplicate_count
+                    else None
+                ),
+                "resolvedDuplicateThreads": resolved_duplicate_count,
+                "nonCanonicalRolloutsPreserved": preserved_noncanonical_count,
+            },
             "extras": extras,
             "portableCodexProfile": portable_profile,
             "portabilityAudit": portability,
+            "pathBudget": {
+                "reportRelativePath": "reports/path-budget.json",
+                "safe": path_budget_report["safe"],
+                "longPathsEnabled": path_budget_report["longPathsEnabled"],
+                "longestProjectedPathLength": path_budget_report["longest"][
+                    "pathLength"
+                ],
+            },
+            "skippedReconstructablePythonCache": {
+                "count": len(skipped_reconstructable_cache),
+                "reportRelativePath": (
+                    "reports/skipped-python-cache.json"
+                    if skipped_reconstructable_cache
+                    else None
+                ),
+            },
             "selection": {
                 "includedProjectPaths": [str(item["sourcePath"]) for item in candidates],
                 "excludedProjectPaths": [
@@ -2284,6 +3181,7 @@ def build_backup(args: argparse.Namespace) -> Path:
             return path
 
         log("Creating SHA-256 manifest...")
+        current_phase = "integrity-manifest"
         report_status(0, 0, "Step 4/6 — Preparing file-integrity verification...")
         hashed_count, payload_bytes, hash_manifest_sha = create_hash_manifest(
             building, finalize_lineage
@@ -2335,6 +3233,22 @@ def build_backup(args: argparse.Namespace) -> Path:
                     "fieldsNeedingReview", 0
                 ),
             },
+            "pathBudget": {
+                "reportRelativePath": "reports/path-budget.json",
+                "safe": path_budget_report["safe"],
+                "longPathsEnabled": path_budget_report["longPathsEnabled"],
+                "longestProjectedPathLength": path_budget_report["longest"][
+                    "pathLength"
+                ],
+            },
+            "skippedReconstructablePythonCache": {
+                "reportRelativePath": (
+                    "reports/skipped-python-cache.json"
+                    if skipped_reconstructable_cache
+                    else None
+                ),
+                "count": len(skipped_reconstructable_cache),
+            },
             "lineage": {
                 "manifestRelativePath": "manifest/lineage.json",
                 "lineageVersion": lineage.LINEAGE_VERSION,
@@ -2346,6 +3260,8 @@ def build_backup(args: argparse.Namespace) -> Path:
             "counts": {
                 "threads": len(thread_manifest),
                 "sessionFiles": session_count,
+                "resolvedDuplicateThreads": resolved_duplicate_count,
+                "nonCanonicalRolloutsPreserved": preserved_noncanonical_count,
                 "projects": len(projects),
                 "logicalProjects": len(
                     {item["projectId"] for item in project_identities if item["sourcePresent"]}
@@ -2356,6 +3272,9 @@ def build_backup(args: argparse.Namespace) -> Path:
                 "attachmentsCopied": len(attachment_records),
                 "attachmentsMissing": len(missing_attachments),
                 "warnings": len(warnings),
+                "skippedReconstructablePythonCache": len(
+                    skipped_reconstructable_cache
+                ),
                 "hashedFiles": hashed_count,
             },
             "selection": {
@@ -2372,6 +3291,7 @@ def build_backup(args: argparse.Namespace) -> Path:
         write_package_manifest(building, package)
         validator = toolkit_root / "tools" / "validate_backup.py"
         log("Running fast structural preflight validation...")
+        current_phase = "structural-validation"
         report_status(0, 0, "Step 5/6 — Checking database, manifests and package structure...")
         # Every payload byte was already read while creating sha256.csv. Re-reading
         # the complete package here made Create backup roughly twice as slow.
@@ -2389,6 +3309,7 @@ def build_backup(args: argparse.Namespace) -> Path:
             building, validator, allow_building=False, verify_hashes=False
         )
         report_status(0, 0, "All checks passed; completing the backup safely...")
+        current_phase = "finalization"
         project_identity.save_registry(identity_registry_path, identity_registry)
         os.replace(building, final_path)
         lineage.save_state(lineage_state_path, lineage.state_from_manifest(lineage_manifest))
@@ -2401,7 +3322,7 @@ def build_backup(args: argparse.Namespace) -> Path:
         )
         report_status(1, 1, "Backup complete")
         return final_path
-    except Exception:
+    except Exception as exc:
         error_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_io.write_text(error_path, traceback.format_exc())
         try:
@@ -2411,6 +3332,13 @@ def build_backup(args: argparse.Namespace) -> Path:
                 package["backupComplete"] = False
                 package["failedAtUtc"] = utc_now()
                 write_package_manifest(building, package)
+        except Exception:
+            pass
+        try:
+            write_json(
+                building / "INCOMPLETE.json",
+                incomplete_staging_report(building, current_phase, exc),
+            )
         except Exception:
             pass
         log("")
