@@ -15,6 +15,8 @@
 > and continued use in Codex all succeeded. Keep an independent copy of
 > irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
 
+https://mechscript.nl/en/codex-lifeboat-backup-restore-migrate-en/
+
 ## Download for Windows
 
 ### [Download Codex Lifeboat 3.4.5 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.5)
