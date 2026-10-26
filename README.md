@@ -3,13 +3,13 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Stable: 3.4.5](https://img.shields.io/badge/stable-v3.4.5-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.5)
+[![Stable: 3.4.6](https://img.shields.io/badge/stable-v3.4.6-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.6)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Stable release:** version 3.4.5 completed the automated source, executable,
+> **Stable release:** version 3.4.6 completed the automated source, executable,
 > and extracted-ZIP suites plus a real Windows 11 PC A → PC B → PC A round trip.
 > Backup, independent backup verification, restore, post-restore verification,
 > and continued use in Codex all succeeded. Keep an independent copy of
@@ -19,7 +19,7 @@ https://mechscript.nl/en/codex-lifeboat-backup-restore-migrate-en/
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.5 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.5)
+### [Download Codex Lifeboat 3.4.6 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.6)
 
 On the release page, download only:
 

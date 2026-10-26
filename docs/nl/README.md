@@ -4,7 +4,7 @@
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Stabiele release:** versie 3.4.5 doorliep de geautomatiseerde bron-, EXE- en
+> **Stabiele release:** versie 3.4.6 doorliep de geautomatiseerde bron-, EXE- en
 > ZIP-tests en een echte Windows 11-route van pc A naar pc B en terug naar pc A.
 > Back-up, onafhankelijke back-upcontrole, herstel, herstelcontrole en verder
 > werken in Codex slaagden. Bewaar onvervangbare gegevens ook apart en lees de
@@ -12,7 +12,7 @@
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.5](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.5)
+### [Download Codex Lifeboat 3.4.6](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.6)
 
 Download op de releasepagina uitsluitend dit bestand:
 

@@ -15,7 +15,7 @@ import urllib.parse
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
-from . import lineage, path_model, project_identity
+from . import lineage, path_model, project_identity, rollout as rollout_io
 
 
 FORMAT_ID = "codex-portable-backup"
@@ -82,8 +82,7 @@ def valid_relative_path(value: str) -> bool:
 
 def parse_session_id(path: Path) -> tuple[str | None, str | None]:
     try:
-        with path.open("r", encoding="utf-8-sig", errors="strict") as handle:
-            first_line = handle.readline()
+        first_line = rollout_io.read_first_line(path)
         value = json.loads(first_line)
         if value.get("type") != "session_meta":
             return None, "eerste regel is niet session_meta"
@@ -470,7 +469,7 @@ def validate(
     session_files = {
         rel(path, package_root)
         for directory in ("sessions", "archived_sessions")
-        for path in (package_root / "codex" / directory).rglob("*.jsonl")
+        for path in rollout_io.iter_files(package_root / "codex" / directory)
     }
     orphan_files = session_files - referenced_rollouts
     if orphan_files:
@@ -488,7 +487,7 @@ def validate(
     noncanonical_root = package_root / "codex" / "unreferenced-rollouts"
     noncanonical_files = {
         rel(path, package_root)
-        for path in noncanonical_root.rglob("*.jsonl")
+        for path in rollout_io.iter_files(noncanonical_root)
         if path.is_file()
     }
     counts = package.get("counts", {}) if isinstance(package.get("counts"), dict) else {}

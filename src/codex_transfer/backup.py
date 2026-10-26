@@ -23,12 +23,12 @@ import urllib.parse
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
 
-from . import atomic_io, lineage, path_model, project_identity, windows
+from . import atomic_io, lineage, path_model, project_identity, rollout as rollout_io, windows
 
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.5"
+GENERATOR_VERSION = "3.4.6"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -992,8 +992,7 @@ def preview_path_budget_items(
 
 def parse_session_meta(path: Path) -> tuple[str | None, str | None]:
     try:
-        with path.open("r", encoding="utf-8-sig", errors="strict") as handle:
-            first = handle.readline()
+        first = rollout_io.read_first_line(path)
         value = json.loads(first)
         if value.get("type") != "session_meta":
             return None, "eerste regel is niet van type session_meta"
@@ -1020,7 +1019,7 @@ def copy_sessions(
         source_root = source_codex / directory_name
         if not source_root.exists():
             continue
-        for source in sorted(source_root.rglob("*.jsonl")):
+        for source in sorted(rollout_io.iter_files(source_root)):
             relative = source.relative_to(source_root)
             destination = package_root / "codex" / directory_name / relative
             backup_relative = portable_relative(destination, package_root)
@@ -1863,7 +1862,7 @@ def find_attachment_paths(session_files: Iterable[Path]) -> dict[str, set[str]]:
     results: dict[str, set[str]] = {}
     for session_file in session_files:
         thread_id, _error = parse_session_meta(session_file)
-        with session_file.open("r", encoding="utf-8-sig", errors="replace") as handle:
+        with rollout_io.open_text(session_file, errors="replace") as handle:
             for line in handle:
                 if "codex-" not in line.lower() and "appdata" not in line.lower():
                     continue
@@ -1897,9 +1896,9 @@ def copy_attachments(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if not enabled:
         return [], []
-    session_files = list((package_root / "codex" / "sessions").rglob("*.jsonl"))
+    session_files = list(rollout_io.iter_files(package_root / "codex" / "sessions"))
     session_files += list(
-        (package_root / "codex" / "archived_sessions").rglob("*.jsonl")
+        rollout_io.iter_files(package_root / "codex" / "archived_sessions")
     )
     copied: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []

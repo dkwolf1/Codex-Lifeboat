@@ -530,7 +530,10 @@ def resolve_conversation_decision(
         clone_id = str(uuid.uuid5(uuid.NAMESPACE_URL, clone_seed))
         directory = "archived_sessions" if item.get("targetArchived") else "sessions"
         item["cloneId"] = clone_id
-        item["cloneRelativePath"] = f"{directory}/lifeboat-{clone_id}.jsonl"
+        target_suffix = ".jsonl.zst" if str(item.get("target") or "").casefold().endswith(
+            ".jsonl.zst"
+        ) else ".jsonl"
+        item["cloneRelativePath"] = f"{directory}/lifeboat-{clone_id}{target_suffix}"
     item.update(
         {
             "decision": decision,

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 3.4.6 - 2026-10-26
+
+- Added streaming discovery and reading for Codex `.jsonl.zst` conversation
+  rollouts alongside existing `.jsonl` files, covering active and archived chats.
+- Backups preserve compressed rollout bytes, filenames, directory structure,
+  hashes, and database-to-rollout identity without modifying the source profile.
+- Added complete Zstandard frame validation so corrupt or truncated compressed
+  rollouts fail closed instead of producing an apparently valid backup.
+- Extended attachment discovery, semantic lineage, prefix comparison, duplicate
+  resolution, diagnostics, independent validation, restore, and restore
+  verification to compressed rollouts.
+- Restore keeps compressed conversations compressed, translates embedded portable
+  paths, updates database rollout paths, and preserves compression for keep-both
+  conversation clones.
+- Added mixed-format regression coverage for active and archived conversations,
+  byte-identical backup, source immutability, compressed attachments, corruption
+  rejection, path translation, restore verification, and round-trip backup.
+- Added the pinned `python-zstandard` runtime dependency and packaged-build check.
+
 ## 3.4.5 - 2026-09-16
 
 - Added an early, read-only rollout preflight so missing, duplicate, or invalid

@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 try:
-    from . import backup, lineage, location_mapper, path_model, portability_audit, project_identity, recovery, restore_plan, windows
+    from . import backup, lineage, location_mapper, path_model, portability_audit, project_identity, recovery, restore_plan, rollout as rollout_io, windows
     from .validate import validate
 except ImportError:
     import backup
@@ -23,11 +23,12 @@ except ImportError:
     import project_identity
     import recovery
     import restore_plan
+    import rollout as rollout_io
     import windows
     from validate import validate
 
 
-RESTORE_VERSION = "3.4.5"
+RESTORE_VERSION = "3.4.6"
 PROTECTED_NAMES = {"auth.json", "installation_id", "cap_sid"}
 RUNTIME_NAMES = {
     ".sandbox",
@@ -898,9 +899,12 @@ def _build_restored_database(
 
 def _rewrite_copy(source: Path, destination: Path, translator: PathTranslator) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + ".restore.tmp")
-    with source.open("r", encoding="utf-8-sig", errors="replace", newline="") as reader:
-        with temporary.open("w", encoding="utf-8", newline="\n") as writer:
+    temporary = destination.with_name(
+        f".{destination.name}.restore.tmp"
+        + (".jsonl.zst" if rollout_io.is_compressed(destination) else ".jsonl")
+    )
+    with rollout_io.open_text(source, errors="replace", newline="") as reader:
+        with rollout_io.open_text_writer(temporary) as writer:
             for line in reader:
                 writer.write(translator.text(line.rstrip("\r\n")) + "\n")
     os.replace(temporary, destination)
@@ -915,7 +919,7 @@ def _restore_sessions(package_root: Path, target_codex: Path, translator: PathTr
             _remove_path(target_root)
         if not source_root.exists():
             continue
-        for source in source_root.rglob("*.jsonl"):
+        for source in rollout_io.iter_files(source_root):
             destination = target_root / source.relative_to(source_root)
             _rewrite_copy(source, destination, translator)
             count += 1
@@ -933,9 +937,12 @@ def _rewrite_cloned_rollout(
     clone_id: str,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + ".restore.tmp")
-    with source.open("r", encoding="utf-8-sig", errors="strict") as reader:
-        with temporary.open("w", encoding="utf-8", newline="\n") as writer:
+    temporary = destination.with_name(
+        f".{destination.name}.restore.tmp"
+        + (".jsonl.zst" if rollout_io.is_compressed(destination) else ".jsonl")
+    )
+    with rollout_io.open_text(source, errors="strict") as reader:
+        with rollout_io.open_text_writer(temporary) as writer:
             for number, line in enumerate(reader, 1):
                 if not line.strip():
                     continue

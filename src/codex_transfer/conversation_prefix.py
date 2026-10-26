@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterator
 
-from . import lineage
+from . import lineage, rollout as rollout_io
 
 
 PREFIX_VERSION = 1
@@ -19,31 +19,26 @@ class ConversationRecordError(ValueError):
 def _canonical_records(
     path: Path, replacements: list[tuple[str, str]]
 ) -> Iterator[str]:
-    first_line = True
-    with path.open("rb") as handle:
-        for number, raw_line in enumerate(handle, start=1):
-            try:
-                line = raw_line.decode("utf-8-sig" if first_line else "utf-8")
-            except UnicodeError as exc:
-                raise ConversationRecordError(
-                    f"rollout is not valid UTF-8 at record {number}"
-                ) from exc
-            first_line = False
-            if not line.strip():
-                continue
-            try:
-                value = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ConversationRecordError(
-                    f"rollout contains invalid JSON at record {number}"
-                ) from exc
-            normalized = lineage.normalize_semantic_value(value, replacements)
-            yield json.dumps(
-                normalized,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
+    try:
+        with rollout_io.open_text(path, errors="strict") as handle:
+            for number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    value = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ConversationRecordError(
+                        f"rollout contains invalid JSON at record {number}"
+                    ) from exc
+                normalized = lineage.normalize_semantic_value(value, replacements)
+                yield json.dumps(
+                    normalized,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+    except rollout_io.READ_ERRORS as exc:
+        raise ConversationRecordError("rollout is unreadable or invalid") from exc
 
 
 def _metadata_equal(

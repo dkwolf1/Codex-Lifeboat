@@ -7,3 +7,6 @@ PyInstaller is distributed under GPL 2.0 with the special exception that permits
 distribution of bundled applications. The application's own source is not placed
 under GPL solely by using the PyInstaller bootloader.
 https://pyinstaller.org/en/stable/license.html
+
+python-zstandard is distributed under the BSD 3-Clause License.
+https://github.com/indygreg/python-zstandard/blob/main/LICENSE

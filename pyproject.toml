@@ -1,6 +1,6 @@
 [project]
 name = "codex-lifeboat"
-version = "3.4.5"
+version = "3.4.6"
 description = "One-click Codex backup, restore and Windows PC migration utility"
 readme = "README.md"
 license = "MIT"
@@ -27,6 +27,9 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Topic :: System :: Archiving :: Backup",
   "Topic :: System :: Recovery Tools",
+]
+dependencies = [
+  "zstandard==0.23.0",
 ]
 
 [project.gui-scripts]

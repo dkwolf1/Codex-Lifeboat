@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from . import atomic_io
+from . import atomic_io, rollout as rollout_io
 
 
 LINEAGE_VERSION = 1
@@ -225,11 +225,8 @@ def _fallback_jsonl_digest(
     path: Path, replacements: list[tuple[str, str]]
 ) -> str:
     digest = hashlib.sha256()
-    first_line = True
-    with path.open("rb") as handle:
-        for raw_line in handle:
-            line = raw_line.decode("utf-8-sig" if first_line else "utf-8")
-            first_line = False
+    with rollout_io.open_text(path, errors="strict") as handle:
+        for line in handle:
             active = _replacements_present_in_text(line, replacements)
             digest.update(_replace_paths(line, active).encode("utf-8"))
     return digest.hexdigest()
@@ -263,50 +260,46 @@ def semantic_file_digest(
     replacements: list[tuple[str, str]],
     progress: Callable[[int], None] | None = None,
 ) -> str:
-    if path.suffix.casefold() == ".jsonl":
-        raw_digest = hashlib.sha256()
+    if rollout_io.is_rollout_path(path):
         semantic_digest = hashlib.sha256()
-        text_decodable = True
         json_valid = True
-        first_line = True
-        with path.open("rb") as handle:
-            for raw_line in handle:
-                raw_digest.update(raw_line)
-                if progress:
-                    progress(len(raw_line))
-                try:
-                    line = raw_line.decode("utf-8-sig" if first_line else "utf-8")
-                except UnicodeError:
-                    text_decodable = False
-                    first_line = False
-                    continue
-                first_line = False
-                if not line.strip():
-                    continue
-                active_replacements = _replacements_present_in_text(
-                    line, replacements
-                )
-                if len(raw_line) > 2 * 1024 * 1024:
-                    normalized = _replace_paths(
-                        line, active_replacements
-                    ).rstrip("\n")
-                else:
-                    try:
-                        normalized = json.dumps(
-                            normalize_semantic_value(
-                                json.loads(line), active_replacements
-                            ),
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        )
-                    except (json.JSONDecodeError, TypeError):
-                        json_valid = False
+        try:
+            with rollout_io.open_text(path, errors="strict") as handle:
+                for line in handle:
+                    if not line.strip():
                         continue
-                semantic_digest.update(normalized.encode("utf-8"))
-                semantic_digest.update(b"\n")
-        if not text_decodable:
-            return raw_digest.hexdigest()
+                    active_replacements = _replacements_present_in_text(
+                        line, replacements
+                    )
+                    if len(line.encode("utf-8")) > 2 * 1024 * 1024:
+                        normalized = _replace_paths(
+                            line, active_replacements
+                        ).rstrip("\n")
+                    else:
+                        try:
+                            normalized = json.dumps(
+                                normalize_semantic_value(
+                                    json.loads(line), active_replacements
+                                ),
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            )
+                        except (json.JSONDecodeError, TypeError):
+                            json_valid = False
+                            continue
+                    semantic_digest.update(normalized.encode("utf-8"))
+                    semantic_digest.update(b"\n")
+        except rollout_io.READ_ERRORS:
+            digest = hashlib.sha256()
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            if progress:
+                progress(path.stat().st_size)
+            return digest.hexdigest()
+        if progress:
+            progress(path.stat().st_size)
         if not json_valid:
             return _fallback_jsonl_digest(path, replacements)
         return semantic_digest.hexdigest()

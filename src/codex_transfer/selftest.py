@@ -28,6 +28,7 @@ from . import (
     recovery,
     restore,
     restore_plan,
+    rollout,
     windows,
 )
 from .validate import supports_format, validate
@@ -416,7 +417,7 @@ def _write_source(profile: Path) -> tuple[Path, Path]:
         codex / "sessions" / "2026" / "08" / "23" / "rollout-projectless.jsonl"
     )
     archived_session = (
-        codex / "archived_sessions" / "rollout-archived-self-test.jsonl"
+        codex / "archived_sessions" / "rollout-archived-self-test.jsonl.zst"
     )
     session.parent.mkdir(parents=True, exist_ok=True)
     projectless_session.parent.mkdir(parents=True, exist_ok=True)
@@ -477,23 +478,37 @@ def _write_source(profile: Path) -> tuple[Path, Path]:
         + "\n",
         encoding="utf-8",
     )
-    archived_session.write_text(
-        json.dumps(
-            {
-                "timestamp": "2026-08-21T10:00:00Z",
-                "type": "session_meta",
-                "payload": {
-                    "id": ARCHIVED_THREAD_ID,
-                    "cwd": str(project),
-                    "originator": "Codex Desktop",
-                    "cli_version": "self-test",
+    with rollout.open_text_writer(archived_session) as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "timestamp": "2026-08-21T10:00:00Z",
+                    "type": "session_meta",
+                    "payload": {
+                        "id": ARCHIVED_THREAD_ID,
+                        "cwd": str(project),
+                        "originator": "Codex Desktop",
+                        "cli_version": "self-test",
+                    },
                 },
-            },
-            separators=(",", ":"),
+                separators=(",", ":"),
+            )
+            + "\n"
         )
-        + "\n",
-        encoding="utf-8",
-    )
+        handle.write(
+            json.dumps(
+                {
+                    "timestamp": "2026-08-21T10:00:01Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": str(attachment),
+                    },
+                },
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
     (codex / "session_index.jsonl").write_text(
         json.dumps({"id": THREAD_ID, "title": "Self test"})
         + "\n"
@@ -2687,6 +2702,48 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     )
     source_after = _hash_tree(source_profile)
     package_validation = validate(package, False)
+    source_compressed_rollout = next(
+        rollout.iter_files(source_codex / "archived_sessions")
+    )
+    packaged_compressed_rollout = (
+        package
+        / "codex"
+        / "archived_sessions"
+        / source_compressed_rollout.relative_to(
+            source_codex / "archived_sessions"
+        )
+    )
+    attachment_mappings = backup.read_json(
+        package / "manifest" / "path-mappings.json"
+    ).get("attachments", [])
+    compressed_attachment_detected = any(
+        ARCHIVED_THREAD_ID in item.get("referencedByThreadIds", [])
+        for item in attachment_mappings
+    )
+    corrupt_compressed_rollout = root / "corrupt-rollout.jsonl.zst"
+    with rollout.open_text_writer(corrupt_compressed_rollout) as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {"id": "truncated-compressed-rollout"},
+                }
+            )
+            + "\n"
+            + ("truncated-tail" * 10_000)
+        )
+    compressed_bytes = corrupt_compressed_rollout.read_bytes()
+    corrupt_compressed_rollout.write_bytes(compressed_bytes[:-5])
+    _corrupt_id, corrupt_error = backup.parse_session_meta(
+        corrupt_compressed_rollout
+    )
+    compressed_backup_safe = bool(
+        packaged_compressed_rollout.is_file()
+        and backup.sha256_file(source_compressed_rollout)
+        == backup.sha256_file(packaged_compressed_rollout)
+        and compressed_attachment_detected
+        and corrupt_error
+    )
     from .gui import _backup_result_model
 
     visual_backup_summary = _backup_result_model(package, package_validation)
@@ -3474,6 +3531,23 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         and restored.get("recoveryRetention", {}).get("validPointsAfter") == 1
     )
     restored_validation = restore.verify_restored(package, target_profile)
+    restored_compressed_rollout = next(
+        rollout.iter_files(target_profile / ".codex" / "archived_sessions")
+    )
+    with rollout.open_text(restored_compressed_rollout) as handle:
+        restored_compressed_records = [
+            json.loads(line) for line in handle if line.strip()
+        ]
+    restored_compressed_cwd = str(
+        (restored_compressed_records[0].get("payload") or {}).get("cwd") or ""
+    )
+    compressed_restore_safe = bool(
+        rollout.is_compressed(restored_compressed_rollout)
+        and backup.parse_session_meta(restored_compressed_rollout)
+        == (ARCHIVED_THREAD_ID, None)
+        and restored_compressed_cwd == str(target_project)
+        and restored_compressed_cwd != str(source_project)
+    )
     identity_manifest = backup.read_json(
         package / "manifest" / "project-identities.json"
     )
@@ -3903,6 +3977,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "unreadableNormalFileStillFailsClosed": mandatory_copy_failure,
         "identicalDuplicateRolloutResolved": identical_rollout_resolved,
         "differentDuplicateRolloutResolved": different_rollout_resolved,
+        "compressedRolloutBackupIsExactAndFailClosed": compressed_backup_safe,
         "selectiveProjectExclusionComplete": selective_project_exclusion_complete,
         "snapshotUsesSingleFileJournal": snapshot_journal_mode == "delete",
         "validatorIsReadOnly": package_validation.get("checks", {}).get(
@@ -3970,6 +4045,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "sourceAuthExcluded": not source_auth_in_package,
         "portableExecutableIncluded": portable_executable_included,
         "restoreValid": restored_validation["valid"],
+        "compressedRolloutRestoreVerified": compressed_restore_safe,
         "targetAuthPreserved": auth_preserved,
         "projectExact": project_exact,
         "portableProfileRestored": portable_profile_restored,

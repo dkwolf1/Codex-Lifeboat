@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from . import __version__, atomic_io, backup, portability_audit, recovery, windows
+from . import __version__, atomic_io, backup, portability_audit, recovery, rollout as rollout_io, windows
 
 
 REPORT_VERSION = 1
@@ -104,7 +104,7 @@ def _session_file_count(codex_home: Path) -> int:
         if not root.is_dir() or root.is_symlink():
             continue
         for _folder, _directories, files in os.walk(root, followlinks=False):
-            count += sum(1 for name in files if name.lower().endswith(".jsonl"))
+            count += sum(1 for name in files if rollout_io.is_rollout_path(name))
     return count
 
 
