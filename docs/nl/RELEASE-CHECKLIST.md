@@ -2,16 +2,16 @@
 
 [English](../RELEASE-CHECKLIST.md)
 
-Deze checklist publiceert Codex Lifeboat 3.4.6 als **stabiele release**. De
+Deze checklist publiceert Codex Lifeboat 3.4.7 als **stabiele release**. De
 tag-workflow bouwt en controleert nieuwe releasebestanden, maakt de
 checksums en herkomstverklaringen en publiceert de GitHub-release.
 
 ## Vóór het pushen
 
-- Controleer dat `git status --short` alleen bedoelde 3.4.6-wijzigingen bevat.
+- Controleer dat `git status --short` alleen bedoelde 3.4.7-wijzigingen bevat.
 - Stage geen echte back-up, database, token, `.env`, EXE, ZIP of bouwmap.
 - De lokale map `dist` hoort niet in Git en wordt bewust genegeerd.
-- Maak tag `v3.4.6` pas nadat de CI-run van `main` groen is.
+- Maak tag `v3.4.7` pas nadat de CI-run van `main` groen is.
 
 ## Publiceren met PowerShell
 
@@ -21,7 +21,7 @@ Voer in de repositorymap uit:
 git add -A
 git status --short
 git diff --cached --check
-git commit -m "Prepare Codex Lifeboat 3.4.6 stable release"
+git commit -m "Fix compressed rollout duplicate resolution"
 git push origin main
 ```
 
@@ -29,15 +29,15 @@ Wacht tot de `main`-CI groen is op
 <https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml>. Voer dan uit:
 
 ```powershell
-git tag -a v3.4.6 -m "Codex Lifeboat 3.4.6 stable release"
-git push origin v3.4.6
+git tag -a v3.4.7 -m "Codex Lifeboat 3.4.7 stable release"
+git push origin v3.4.7
 ```
 
 De tag start `.github/workflows/release.yml`. Maak niet daarnaast handmatig een
 release met dezelfde tag: de workflow maakt deze als stabiele nieuwste release.
 Volg de uitvoering op
 <https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/release.yml> en open
-daarna <https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.6>.
+daarna <https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.7>.
 
 ## Gepubliceerde release controleren
 
@@ -60,7 +60,7 @@ Controleer na downloaden eventueel de GitHub-herkomstverklaring:
 gh attestation verify .\Codex-Lifeboat-Windows-x64-Portable.zip --repo dkwolf1/Codex-Lifeboat
 ```
 
-De 86 bron-/EXE-/ZIP-controles, 12/12 geautomatiseerde Windows-scenario's en een
+De 87 bron-/EXE-/ZIP-controles, 12/12 geautomatiseerde Windows-scenario's en een
 fysieke Windows 11-route van pc A naar pc B en terug zijn geslaagd. Die route bevatte
 beide controles en verder werken in Codex na herstel. Windows 10 en USB-onderbreking
 blijven als open aanvullende dekking vermeld. Testers mogen nooit echte back-ups

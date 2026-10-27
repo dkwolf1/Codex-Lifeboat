@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 3.4.7 - 2026-10-27
+
+- Resolve duplicate rollouts when SQLite still references the original `.jsonl`
+  filename but Codex has replaced it with `.jsonl.zst`; selection remains strict
+  to one hashed candidate in the expected collection, and every alternative is
+  preserved under `codex/unreferenced-rollouts`.
+
 ## 3.4.6 - 2026-10-26
 
 - Added streaming discovery and reading for Codex `.jsonl.zst` conversation

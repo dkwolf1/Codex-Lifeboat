@@ -2529,6 +2529,138 @@ def _rollout_resolution_test(
     return results[0], results[1]
 
 
+def _compressed_database_rollout_resolution_test(
+    root: Path, source_profile: Path
+) -> bool:
+    profile = root / "resolved-compressed-database-path-user"
+    _copy_profile_fixture(source_profile, profile)
+    codex = profile / ".codex"
+    connection = sqlite3.connect(codex / "state_5.sqlite")
+    try:
+        database_rollout = Path(
+            str(
+                connection.execute(
+                    'SELECT "rollout_path" FROM "threads" WHERE "id"=?',
+                    (THREAD_ID,),
+                ).fetchone()[0]
+            ).replace("\\\\?\\", "")
+        )
+    finally:
+        connection.close()
+
+    original_text = database_rollout.read_text(encoding="utf-8-sig")
+    canonical_source = Path(str(database_rollout) + ".zst")
+    alternative_sources = [
+        database_rollout.with_name(f"alternative-{number}-{THREAD_ID}.jsonl.zst")
+        for number in (1, 2)
+    ]
+    for number, candidate in enumerate(
+        [canonical_source, *alternative_sources], start=0
+    ):
+        with rollout.open_text_writer(candidate) as handle:
+            handle.write(original_text)
+            handle.write(
+                json.dumps(
+                    {
+                        "timestamp": f"2026-09-14T08:00:0{number}Z",
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "user_message",
+                            "message": f"compressed duplicate candidate {number}",
+                        },
+                    },
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
+    database_rollout.unlink()
+    source_before = _hash_tree(profile)
+
+    destination = root / "resolved-compressed-database-path-usb"
+    config = root / "resolved-compressed-database-path-config.json"
+    backup.write_json(
+        config,
+        {
+            "configVersion": 1,
+            "destinationRoot": str(destination),
+            "includeAttachments": True,
+            "projects": [],
+            "additionalPortablePaths": [],
+            "excludeDirectoryNames": [],
+            "projectRegistryPath": str(
+                root / "resolved-compressed-state" / "project-registry.json"
+            ),
+            "lineageStatePath": str(
+                root / "resolved-compressed-state" / "lineage-state.json"
+            ),
+            "deviceStatePath": str(
+                root / "resolved-compressed-state" / "device.json"
+            ),
+        },
+    )
+    package = backup.build_backup(
+        argparse.Namespace(
+            config=str(config),
+            destination=str(destination),
+            source_profile=str(profile),
+            source_codex_home=str(codex),
+            allow_running_test=True,
+        )
+    )
+    resolution_report = backup.read_json(
+        package / "reports" / "rollout-resolution.json"
+    )
+    resolution = resolution_report.get("resolution", {})
+    resolved = resolution.get("resolved", [])
+    canonical_relative = "codex/" + canonical_source.relative_to(codex).as_posix()
+    preserved = resolved[0].get("preservedNonCanonical", []) if resolved else []
+    preserved_by_source = {
+        str(item.get("sourcePath")): str(item.get("preservedBackupRelativePath"))
+        for item in preserved
+    }
+    alternatives_preserved_exactly = all(
+        source_path in preserved_by_source
+        and (
+            package
+            / Path(*Path(preserved_by_source[source_path]).parts)
+        ).read_bytes()
+        == Path(source_path).read_bytes()
+        for source_path in map(str, alternative_sources)
+    )
+    original_alternatives_absent = all(
+        not (
+            package
+            / "codex"
+            / alternative.relative_to(codex)
+        ).exists()
+        for alternative in alternative_sources
+    )
+    threads = backup.read_json(package / "manifest" / "threads.json")
+    thread = next(item for item in threads if item.get("id") == THREAD_ID)
+    candidates = (
+        resolution_report.get("duplicateRollouts", [{}])[0].get("candidates", [])
+    )
+    return bool(
+        validate(package, False).get("valid")
+        and resolution.get("resolvedDuplicateThreadIds") == [THREAD_ID]
+        and resolution.get("unresolvedDuplicateThreadIds") == []
+        and resolution.get("canonicalPathsByThreadId", {}).get(THREAD_ID)
+        == canonical_relative
+        and resolved[0].get("canonical", {}).get("sourcePath")
+        == str(canonical_source)
+        and sum(
+            bool(item.get("matchesDatabaseRolloutPath")) for item in candidates
+        )
+        == 1
+        and len(preserved) == 2
+        and alternatives_preserved_exactly
+        and original_alternatives_absent
+        and thread.get("backupRelativePath") == canonical_relative
+        and thread.get("rolloutCollection") == "sessions"
+        and source_before == _hash_tree(profile)
+    )
+
+
 def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     root = (
         work_root.resolve()
@@ -2565,6 +2697,9 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     )
     identical_rollout_resolved, different_rollout_resolved = (
         _rollout_resolution_test(root, source_profile)
+    )
+    compressed_database_rollout_resolved = (
+        _compressed_database_rollout_resolution_test(root, source_profile)
     )
     selection_preview = backup.build_backup_preview(source_profile, source_codex)
     preview_source_unchanged = source_before == _hash_tree(source_profile)
@@ -3977,6 +4112,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "unreadableNormalFileStillFailsClosed": mandatory_copy_failure,
         "identicalDuplicateRolloutResolved": identical_rollout_resolved,
         "differentDuplicateRolloutResolved": different_rollout_resolved,
+        "compressedDatabaseRolloutPathResolved": compressed_database_rollout_resolved,
         "compressedRolloutBackupIsExactAndFailClosed": compressed_backup_safe,
         "selectiveProjectExclusionComplete": selective_project_exclusion_complete,
         "snapshotUsesSingleFileJournal": snapshot_journal_mode == "delete",

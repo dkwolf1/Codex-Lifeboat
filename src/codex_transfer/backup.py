@@ -28,7 +28,7 @@ from . import atomic_io, lineage, path_model, project_identity, rollout as rollo
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.6"
+GENERATOR_VERSION = "3.4.7"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -384,6 +384,23 @@ def clean_windows_path(value: str) -> Path:
 
 def normalized_source_key(path: Path) -> str:
     return os.path.normcase(os.path.normpath(str(path.resolve(strict=False))))
+
+
+def matches_database_rollout_path(source: Path, database_path: str) -> bool:
+    """Match Codex's rollout path, including its post-compression filename."""
+
+    if not database_path:
+        return False
+    database_rollout = clean_windows_path(database_path)
+    source_key = normalized_source_key(source)
+    if source_key == normalized_source_key(database_rollout):
+        return True
+    return bool(
+        rollout_io.is_compressed(source)
+        and database_rollout.name.casefold().endswith(rollout_io.PLAIN_SUFFIX)
+        and source_key
+        == normalized_source_key(Path(str(database_rollout) + ".zst"))
+    )
 
 
 def stable_id(path: Path) -> str:
@@ -1088,10 +1105,8 @@ def rollout_validation_report(
                 "sourcePath": str(source),
                 "backupRelativePath": relative,
                 "collection": relative_parts[1] if len(relative_parts) > 1 else None,
-                "matchesDatabaseRolloutPath": bool(
-                    database_path
-                    and normalized_source_key(source)
-                    == normalized_source_key(clean_windows_path(database_path))
+                "matchesDatabaseRolloutPath": matches_database_rollout_path(
+                    source, database_path
                 ),
             }
             try:
