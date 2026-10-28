@@ -1623,7 +1623,6 @@ def copy_portable_codex_profile(
     skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Copy all user data not classified as identity/runtime/live database state."""
-    destination_root = package_root / "codex" / "portable-profile"
     records: list[dict[str, Any]] = []
     handled_names = {
         "sessions",
@@ -2002,6 +2001,7 @@ def copy_extras(
     records: list[dict[str, Any]] = []
     mappings: list[dict[str, Any]] = []
     for item, source, relative in configured_extra_sources(config):
+        name = PurePosixPath(relative).name
         exists = source.exists()
         mapping = {
             "mappingKind": "extra",

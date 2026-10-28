@@ -17,6 +17,13 @@ behavior, and run `test-phase11.ps1` before submitting. `test.ps1` remains the
 shorter source-suite entry point. English is the primary project language;
 user-facing Dutch translations should remain available and accurate.
 
+Install the development checks and run Ruff before submitting Python changes:
+
+```powershell
+python -m pip install --disable-pip-version-check -r requirements-dev.txt
+python -m ruff check src tests
+```
+
 Never commit real Codex backup packages, `auth.json`, personal databases, `.env`
 files from actual projects or machine-specific recovery reports.
 

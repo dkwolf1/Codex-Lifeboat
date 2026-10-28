@@ -7,9 +7,7 @@ import argparse
 import csv
 import hashlib
 import json
-import os
 import sqlite3
-import sys
 import time
 import urllib.parse
 from pathlib import Path, PurePosixPath
@@ -969,7 +967,6 @@ def validate(
             ):
                 errors.append("Lineage relation is inconsistent with parentBackupId.")
 
-            replacements = lineage.portable_replacements(package, mappings)
             for item in lineage_manifest.get("items", []):
                 if item.get("state") == "removed":
                     continue

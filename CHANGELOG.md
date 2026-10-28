@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a Ruff lint job in CI and fixed the existing issues it identified,
+  including an undefined name in additional portable-path backups.
+
 ## 3.4.7 - 2026-10-27
 
 - Resolve duplicate rollouts when SQLite still references the original `.jsonl`

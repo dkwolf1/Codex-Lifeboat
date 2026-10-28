@@ -1495,7 +1495,7 @@ def verify_restored(
     errors: list[str] = []
     notices: list[str] = []
     checks: dict[str, Any] = {}
-    package = backup.read_json(package_root / "manifest" / "package.json")
+    backup.read_json(package_root / "manifest" / "package.json")
     database = target_codex / "state_5.sqlite"
     database_project_ids: set[str] = set()
     try:
