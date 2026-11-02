@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 3.4.10 - 2026-11-02
+
+- Replaced the single `*.dist-info` exception with a complete, read-only preflight
+  of every reachable `.chatgpt-projects/**/work/_deps` dependency tree.
+- Show every inaccessible dependency path in one review window and require the
+  user to approve that exact set before any omission is allowed. A changed or new
+  read failure after review stops the backup instead of widening the exclusion.
+- Keep conversations, project registrations, paths outside `work/_deps`, sharing
+  violations and non-permission errors mandatory and fail closed.
+- Added hash-protected preflight and exclusion reports plus end-to-end coverage for
+  simultaneous inaccessible `PIL` and `pillow-*.dist-info` directories.
+- Hardened large restores after the issue #8 field report: peak-space planning now
+  includes per-file allocation overhead plus a reserve, space is rechecked before
+  restore writes, and a full-disk failure while updating the error journal can no
+  longer prevent automatic rollback from being attempted.
+
 ## 3.4.9 - 2026-11-02
 
 - Allow only access-denied directory enumeration for versioned `*.dist-info`

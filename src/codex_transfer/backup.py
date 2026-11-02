@@ -14,6 +14,7 @@ import platform
 import re
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
@@ -29,7 +30,7 @@ from . import atomic_io, lineage, path_model, project_identity, rollout as rollo
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.9"
+GENERATOR_VERSION = "3.4.10"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -631,25 +632,21 @@ def record_skipped_reconstructable_cache(
     return True
 
 
-def is_reconstructable_dependency_metadata_directory(
+def dependency_payload_relative_path(
     path: Path, traversal_root: Path
-) -> bool:
-    """Match only installed-distribution metadata directly below a _deps root."""
+) -> PurePosixPath | None:
+    """Return the relative path only for a Codex project work/_deps payload."""
+    if traversal_root.name.casefold() != ".chatgpt-projects":
+        return None
     try:
         relative = path.relative_to(traversal_root)
     except ValueError:
-        return False
-    name = path.name.casefold()
-    stem = name[: -len(".dist-info")] if name.endswith(".dist-info") else ""
-    distribution, separator, version = stem.rpartition("-")
-    return bool(
-        len(relative.parts) >= 2
-        and relative.parts[-2].casefold() == "_deps"
-        and distribution
-        and separator
-        and version
-        and version[0].isdigit()
-    )
+        return None
+    folded = tuple(part.casefold() for part in relative.parts)
+    for index in range(1, len(folded) - 1):
+        if folded[index : index + 2] == ("work", "_deps"):
+            return PurePosixPath(*relative.parts)
+    return None
 
 
 def is_access_denied_error(error: OSError) -> bool:
@@ -662,36 +659,227 @@ def is_access_denied_error(error: OSError) -> bool:
     )
 
 
-def record_skipped_reconstructable_directory(
+def dependency_preflight_issue(
     source: Path,
-    destination: Path,
     traversal_root: Path,
     error: OSError,
-    warnings: list[str],
-    records: list[dict[str, Any]] | None,
-) -> bool:
-    """Record one narrowly classified unreadable dependency-metadata directory."""
-    if records is None or not (
-        is_access_denied_error(error)
-        and is_reconstructable_dependency_metadata_directory(source, traversal_root)
-    ):
-        return False
-    record = {
+    path_type: str,
+) -> dict[str, Any]:
+    relative = source.relative_to(traversal_root)
+    return {
         "sourcePath": str(source),
-        "destinationPath": str(destination),
+        "sourceRelativePath": PurePosixPath(*relative.parts).as_posix(),
+        "backupRelativePath": PurePosixPath(
+            "codex", "portable-profile", ".chatgpt-projects", *relative.parts
+        ).as_posix(),
         "errorType": type(error).__name__,
         "error": str(error),
-        "kind": "python-distribution-metadata",
-        "pathType": "directory",
-        "contentsEnumerated": False,
-        "fileCount": None,
+        "winError": getattr(error, "winerror", None),
+        "kind": "python-dependency-payload",
+        "pathType": path_type,
+        "contentsEnumerated": False if path_type == "directory" else None,
+        "fileCount": None if path_type == "directory" else 1,
+        "scope": (
+            "entire-directory-subtree" if path_type == "directory" else "single-file"
+        ),
     }
+
+
+def dependency_preflight(source_codex: Path) -> dict[str, Any]:
+    """Inventory every reachable read failure below project work/_deps trees."""
+    traversal_root = source_codex / ".chatgpt-projects"
+    exclusions: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+    scanned_directories = 0
+    scanned_files = 0
+    try:
+        root_stat = os.stat(traversal_root)
+    except FileNotFoundError:
+        return {
+            "preflightVersion": 1,
+            "rootPath": str(traversal_root),
+            "scannedDirectories": 0,
+            "scannedFiles": 0,
+            "exclusionCount": 0,
+            "blockingCount": 0,
+            "exclusions": [],
+            "blockingIssues": [],
+        }
+    except OSError as exc:
+        issue = dependency_preflight_issue(
+            traversal_root, traversal_root, exc, "directory"
+        )
+        issue["kind"] = "mandatory-data"
+        return {
+            "preflightVersion": 1,
+            "rootPath": str(traversal_root),
+            "scannedDirectories": 0,
+            "scannedFiles": 0,
+            "exclusionCount": 0,
+            "blockingCount": 1,
+            "exclusions": [],
+            "blockingIssues": [issue],
+        }
+    if not stat.S_ISDIR(root_stat.st_mode):
+        return {
+            "preflightVersion": 1,
+            "rootPath": str(traversal_root),
+            "scannedDirectories": 0,
+            "scannedFiles": 0,
+            "exclusionCount": 0,
+            "blockingCount": 0,
+            "exclusions": [],
+            "blockingIssues": [],
+        }
+
+    stack = [traversal_root]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = list(os.scandir(current))
+            scanned_directories += 1
+        except OSError as exc:
+            issue = dependency_preflight_issue(current, traversal_root, exc, "directory")
+            if is_access_denied_error(exc) and dependency_payload_relative_path(
+                current, traversal_root
+            ):
+                exclusions.append(issue)
+            else:
+                issue["kind"] = "mandatory-data"
+                blockers.append(issue)
+            continue
+
+        for entry in entries:
+            path = Path(entry.path)
+            path_type = "unknown"
+            try:
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    path_type = "directory"
+                    stack.append(path)
+                    continue
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                path_type = "file"
+                scanned_files += 1
+                if dependency_payload_relative_path(path, traversal_root):
+                    try:
+                        with path.open("rb") as stream:
+                            stream.read(1)
+                    except OSError as exc:
+                        issue = dependency_preflight_issue(
+                            path, traversal_root, exc, "file"
+                        )
+                        if is_access_denied_error(exc):
+                            exclusions.append(issue)
+                        else:
+                            issue["kind"] = "mandatory-data"
+                            blockers.append(issue)
+            except OSError as exc:
+                issue = dependency_preflight_issue(
+                    path, traversal_root, exc, path_type
+                )
+                if (
+                    path_type in {"directory", "file"}
+                    and is_access_denied_error(exc)
+                    and dependency_payload_relative_path(path, traversal_root)
+                ):
+                    exclusions.append(issue)
+                else:
+                    issue["kind"] = "mandatory-data"
+                    blockers.append(issue)
+
+    def sort_key(item: dict[str, Any]) -> str:
+        return str(item.get("sourceRelativePath", "")).casefold()
+
+    exclusions.sort(key=sort_key)
+    blockers.sort(key=sort_key)
+    return {
+        "preflightVersion": 1,
+        "rootPath": str(traversal_root),
+        "scannedDirectories": scanned_directories,
+        "scannedFiles": scanned_files,
+        "exclusionCount": len(exclusions),
+        "blockingCount": len(blockers),
+        "exclusions": exclusions,
+        "blockingIssues": blockers,
+    }
+
+
+def dependency_exclusion_key(item: dict[str, Any]) -> tuple[str, str]:
+    return (
+        normalized_source_key(clean_windows_path(str(item.get("sourcePath", "")))),
+        str(item.get("pathType", "")).casefold(),
+    )
+
+
+def approved_dependency_exclusion_map(
+    preflight: dict[str, Any], approved: Any
+) -> dict[str, dict[str, Any]]:
+    discovered = {
+        dependency_exclusion_key(item): item
+        for item in preflight.get("exclusions", [])
+        if isinstance(item, dict)
+    }
+    approved_items = approved if isinstance(approved, list) else []
+    approved_keys = {
+        dependency_exclusion_key(item)
+        for item in approved_items
+        if isinstance(item, dict)
+    }
+    if set(discovered) != approved_keys:
+        missing = len(set(discovered) - approved_keys)
+        stale = len(approved_keys - set(discovered))
+        raise BackupError(
+            "Dependency exclusions were not explicitly approved or changed after "
+            f"review (unapproved={missing}, no-longer-detected={stale}). Run the "
+            "backup preview again and review the complete dependency preflight."
+        )
+    return {key[0]: value for key, value in discovered.items()}
+
+
+def record_approved_dependency_exclusion(
+    item: dict[str, Any],
+    destination: Path,
+    warnings: list[str],
+    records: list[dict[str, Any]],
+) -> None:
+    record = {**item, "destinationPath": str(destination)}
     records.append(record)
     warnings.append(
-        "Skipped inaccessible reconstructable Python distribution metadata directory; "
-        f"contents could not be enumerated: {source}: {type(error).__name__}: {error}"
+        "Skipped explicitly approved inaccessible Python dependency payload: "
+        f"{item.get('sourcePath')}: {item.get('errorType')}: {item.get('error')}"
     )
-    return True
+
+
+def confirm_approved_dependency_exclusion(
+    source: Path, item: dict[str, Any]
+) -> dict[str, Any]:
+    """Re-prove an approved path is still inaccessible immediately before omission."""
+    try:
+        if item.get("pathType") == "directory":
+            list(os.scandir(source))
+        elif item.get("pathType") == "file":
+            with source.open("rb") as stream:
+                stream.read(1)
+        else:
+            raise BackupError(f"Unknown approved dependency path type: {source}")
+    except OSError as exc:
+        if not is_access_denied_error(exc):
+            raise BackupError(
+                f"Approved dependency path changed error type: {source}: {exc}"
+            ) from exc
+        return {
+            **item,
+            "errorType": type(exc).__name__,
+            "error": str(exc),
+            "winError": getattr(exc, "winerror", None),
+        }
+    raise BackupError(
+        "An approved dependency exclusion became readable before copying; "
+        f"review the preflight again instead of omitting it: {source}"
+    )
 
 
 def copy_tree(
@@ -700,8 +888,9 @@ def copy_tree(
     exclude_fragments: Iterable[str],
     warnings: list[str],
     skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
-    skipped_reconstructable_directories: list[dict[str, Any]] | None = None,
-    allow_dependency_metadata_skip: bool = False,
+    dependency_exclusions: dict[str, dict[str, Any]] | None = None,
+    applied_dependency_exclusions: list[dict[str, Any]] | None = None,
+    before_copy: Callable[[Path, Path, int], None] | None = None,
 ) -> tuple[int, int]:
     count = 0
     byte_count = 0
@@ -709,26 +898,26 @@ def copy_tree(
     stack: list[tuple[Path, Path]] = [(source, destination)]
     while stack:
         current_source, current_destination = stack.pop()
+        approved = (dependency_exclusions or {}).get(
+            normalized_source_key(current_source)
+        )
+        if approved and approved.get("pathType") == "directory":
+            if applied_dependency_exclusions is None:
+                raise BackupError("Approved dependency exclusion has no audit record.")
+            confirmed = confirm_approved_dependency_exclusion(
+                current_source, approved
+            )
+            record_approved_dependency_exclusion(
+                confirmed,
+                current_destination,
+                warnings,
+                applied_dependency_exclusions,
+            )
+            continue
         current_destination.mkdir(parents=True, exist_ok=True)
         try:
             entries = list(os.scandir(current_source))
         except OSError as exc:
-            if allow_dependency_metadata_skip and record_skipped_reconstructable_directory(
-                current_source,
-                current_destination,
-                source,
-                exc,
-                warnings,
-                skipped_reconstructable_directories,
-            ):
-                try:
-                    current_destination.rmdir()
-                except OSError as cleanup_error:
-                    raise BackupError(
-                        "Cannot remove the empty destination for skipped directory "
-                        f"{current_destination}: {cleanup_error}"
-                    ) from cleanup_error
-                continue
             raise BackupError(f"Cannot read directory: {current_source}: {exc}") from exc
         for entry in entries:
             entry_source = Path(entry.path)
@@ -738,6 +927,22 @@ def copy_tree(
             if any(fragment and fragment in relative_text for fragment in excluded):
                 warnings.append(f"Excluded by configuration: {entry_source}")
                 continue
+            approved = (dependency_exclusions or {}).get(
+                normalized_source_key(entry_source)
+            )
+            if approved and approved.get("pathType") == "file":
+                if applied_dependency_exclusions is None:
+                    raise BackupError("Approved dependency exclusion has no audit record.")
+                confirmed = confirm_approved_dependency_exclusion(
+                    entry_source, approved
+                )
+                record_approved_dependency_exclusion(
+                    confirmed,
+                    entry_destination,
+                    warnings,
+                    applied_dependency_exclusions,
+                )
+                continue
             try:
                 if entry.is_symlink():
                     warnings.append(f"Symbolic link or reparse point skipped: {entry_source}")
@@ -746,8 +951,10 @@ def copy_tree(
                     stack.append((entry_source, entry_destination))
                 elif entry.is_file(follow_symlinks=False):
                     confirmed_file = True
-                    copy_file(entry_source, entry_destination)
                     size = entry.stat(follow_symlinks=False).st_size
+                    if before_copy:
+                        before_copy(entry_source, entry_destination, size)
+                    copy_file(entry_source, entry_destination)
                     count += 1
                     byte_count += size
                     if count % 1000 == 0:
@@ -1029,6 +1236,7 @@ def build_backup_preview(
     profile_files, profile_bytes, profile_details = _portable_profile_stats(
         codex_home, codex_path_budget
     )
+    dependency_scan = dependency_preflight(codex_home)
     codex_files += profile_files
     codex_bytes += profile_bytes
     codex_details.extend(profile_details)
@@ -1074,6 +1282,7 @@ def build_backup_preview(
         },
         "projects": projects,
         "portabilityAudit": portability,
+        "dependencyPreflight": dependency_scan,
         "totals": {
             "fileCount": codex_files + total_project_files,
             "totalBytes": codex_bytes + total_project_bytes,
@@ -1713,7 +1922,8 @@ def copy_portable_codex_profile(
     package_root: Path,
     warnings: list[str],
     skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
-    skipped_reconstructable_directories: list[dict[str, Any]] | None = None,
+    dependency_exclusions: dict[str, dict[str, Any]] | None = None,
+    applied_dependency_exclusions: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Copy all user data not classified as identity/runtime/live database state."""
     records: list[dict[str, Any]] = []
@@ -1745,8 +1955,8 @@ def copy_portable_codex_profile(
                 [],
                 warnings,
                 skipped_reconstructable_cache,
-                skipped_reconstructable_directories,
-                allow_dependency_metadata_skip=(lowered == ".chatgpt-projects"),
+                dependency_exclusions if lowered == ".chatgpt-projects" else None,
+                applied_dependency_exclusions,
             )
         elif entry.is_file():
             destination = package_root / relative
@@ -2695,7 +2905,9 @@ def build_backup(args: argparse.Namespace) -> Path:
     error_path = building / "reports" / "backup-error.txt"
     warnings: list[str] = []
     skipped_reconstructable_cache: list[dict[str, Any]] = []
-    skipped_reconstructable_directories: list[dict[str, Any]] = []
+    applied_dependency_exclusions: list[dict[str, Any]] = []
+    dependency_exclusion_lookup: dict[str, dict[str, Any]] = {}
+    dependency_preflight_report: dict[str, Any] = {}
     lineage_manifest: dict[str, Any] | None = None
     current_phase = "snapshot"
 
@@ -2808,6 +3020,30 @@ def build_backup(args: argparse.Namespace) -> Path:
                 f"{len(project_analysis['reparsePointRoots'])} project root reparse point(s) detected and inventoried."
             )
         excludes = [str(item) for item in config.get("excludeDirectoryNames", [])]
+
+        current_phase = "dependency-preflight"
+        log("Preflight: scanning every reachable Codex project dependency path...")
+        dependency_preflight_report = dependency_preflight(source_codex)
+        dependency_preflight_path = building / "reports" / "dependency-preflight.json"
+        write_json(dependency_preflight_path, dependency_preflight_report)
+        blocking_dependency_issues = dependency_preflight_report.get(
+            "blockingIssues", []
+        )
+        if blocking_dependency_issues:
+            first = blocking_dependency_issues[0]
+            raise BackupError(
+                "Dependency preflight found "
+                f"{len(blocking_dependency_issues)} unreadable mandatory path(s). "
+                f"First path: {first.get('sourcePath')}. Full details: "
+                f"{dependency_preflight_path}"
+            )
+        try:
+            dependency_exclusion_lookup = approved_dependency_exclusion_map(
+                dependency_preflight_report,
+                config.get("approvedDependencyExclusions", []),
+            )
+        except BackupError as exc:
+            raise BackupError(f"{exc} Full details: {dependency_preflight_path}") from exc
 
         report_status(0, 0, "Step 2/6 — Calculating required backup space...")
         current_phase = "capacity-and-path-preflight"
@@ -2997,8 +3233,18 @@ def build_backup(args: argparse.Namespace) -> Path:
             building,
             warnings,
             skipped_reconstructable_cache,
-            skipped_reconstructable_directories,
+            dependency_exclusion_lookup,
+            applied_dependency_exclusions,
         )
+        applied_dependency_keys = {
+            dependency_exclusion_key(item)[0]
+            for item in applied_dependency_exclusions
+        }
+        if applied_dependency_keys != set(dependency_exclusion_lookup):
+            raise BackupError(
+                "The approved dependency exclusions changed during copying; "
+                "the backup stopped without accepting a partial exclusion set."
+            )
 
         if index_source.is_file():
             copy_file(index_source, building / "codex" / "session_index.jsonl")
@@ -3063,36 +3309,19 @@ def build_backup(args: argparse.Namespace) -> Path:
                 },
             )
 
-        skipped_directory_report_path = (
-            building / "reports" / "skipped-reconstructable-directories.json"
+        dependency_exclusion_report_path = (
+            building / "reports" / "dependency-exclusions.json"
         )
-        if skipped_reconstructable_directories:
-            skipped_directory_items: list[dict[str, Any]] = []
-            for item in skipped_reconstructable_directories:
-                destination = Path(str(item.get("destinationPath", "")))
-                try:
-                    backup_relative = portable_relative(destination, building)
-                except ValueError:
-                    backup_relative = None
-                skipped_directory_items.append(
-                    {
-                        "sourcePath": item.get("sourcePath"),
-                        "backupRelativePath": backup_relative,
-                        "errorType": item.get("errorType"),
-                        "error": item.get("error"),
-                        "kind": item.get("kind"),
-                        "pathType": item.get("pathType"),
-                        "contentsEnumerated": item.get("contentsEnumerated"),
-                        "fileCount": item.get("fileCount"),
-                    }
-                )
+        if applied_dependency_exclusions:
             write_json(
-                skipped_directory_report_path,
+                dependency_exclusion_report_path,
                 {
                     "reportVersion": 1,
                     "createdAtUtc": utc_now(),
-                    "count": len(skipped_directory_items),
-                    "items": skipped_directory_items,
+                    "approvalRequired": True,
+                    "preflightRelativePath": "reports/dependency-preflight.json",
+                    "count": len(applied_dependency_exclusions),
+                    "items": applied_dependency_exclusions,
                 },
             )
 
@@ -3268,11 +3497,20 @@ def build_backup(args: argparse.Namespace) -> Path:
                     else None
                 ),
             },
-            "skippedReconstructableDirectories": {
-                "count": len(skipped_reconstructable_directories),
+            "dependencyPreflight": {
+                "reportRelativePath": "reports/dependency-preflight.json",
+                "scannedDirectories": dependency_preflight_report.get(
+                    "scannedDirectories", 0
+                ),
+                "scannedFiles": dependency_preflight_report.get("scannedFiles", 0),
+                "blockingCount": 0,
+            },
+            "dependencyExclusions": {
+                "count": len(applied_dependency_exclusions),
+                "explicitlyApproved": True,
                 "reportRelativePath": (
-                    "reports/skipped-reconstructable-directories.json"
-                    if skipped_reconstructable_directories
+                    "reports/dependency-exclusions.json"
+                    if applied_dependency_exclusions
                     else None
                 ),
             },
@@ -3401,13 +3639,25 @@ def build_backup(args: argparse.Namespace) -> Path:
                 ),
                 "count": len(skipped_reconstructable_cache),
             },
-            "skippedReconstructableDirectories": {
+            "dependencyPreflight": {
+                "reportRelativePath": "reports/dependency-preflight.json",
+                "preflightVersion": dependency_preflight_report.get(
+                    "preflightVersion", 1
+                ),
+                "scannedDirectories": dependency_preflight_report.get(
+                    "scannedDirectories", 0
+                ),
+                "scannedFiles": dependency_preflight_report.get("scannedFiles", 0),
+                "blockingCount": 0,
+            },
+            "dependencyExclusions": {
                 "reportRelativePath": (
-                    "reports/skipped-reconstructable-directories.json"
-                    if skipped_reconstructable_directories
+                    "reports/dependency-exclusions.json"
+                    if applied_dependency_exclusions
                     else None
                 ),
-                "count": len(skipped_reconstructable_directories),
+                "count": len(applied_dependency_exclusions),
+                "explicitlyApproved": True,
             },
             "lineage": {
                 "manifestRelativePath": "manifest/lineage.json",
@@ -3435,9 +3685,7 @@ def build_backup(args: argparse.Namespace) -> Path:
                 "skippedReconstructablePythonCache": len(
                     skipped_reconstructable_cache
                 ),
-                "skippedReconstructableDirectories": len(
-                    skipped_reconstructable_directories
-                ),
+                "dependencyExclusions": len(applied_dependency_exclusions),
                 "hashedFiles": hashed_count,
             },
             "selection": {

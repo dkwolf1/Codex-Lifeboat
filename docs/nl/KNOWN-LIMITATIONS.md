@@ -1,4 +1,4 @@
-# Bekende grenzen van release 3.4.4
+# Bekende grenzen van release 3.4.10
 
 1. OpenAI publiceert geen stabiel importcontract voor de lokale Codex-database.
    De app gebruikt daarom schema-inspectie en moet na toekomstige grote
@@ -27,10 +27,12 @@
    package manager (bijvoorbeeld een pnpm-store naast `node_modules`) kunnen op de
    bronschijf fysiek minder ruimte gebruiken, maar een overdraagbare back-up bewaart
    ieder zichtbaar bestand afzonderlijk.
-10. Selectie werkt nu per compleet project. Codex-data gaat altijd mee en afzonderlijke
-    dependency- of cachemappen worden niet stil verwijderd. Een uitgesloten project
-    bewaart zijn chats als projectloze geschiedenis, maar de bestanden zijn niet uit
-    die back-up herstelbaar en de oorspronkelijke werkmap kan na herstel ontbreken.
+10. Selectie werkt per compleet project en Codex-data gaat altijd mee. Ontoegankelijke
+    paden onder `.chatgpt-projects/**/work/_deps` worden alleen uitgesloten nadat een
+    volledige alleen-lezen preflight de exacte lijst toont en de gebruiker deze
+    expliciet goedkeurt. Paden buiten die dependencygrens, een gewijzigde lijst en
+    niet-geclassificeerde fouten blijven fataal. Uitgesloten dependencies moeten na
+    herstel opnieuw door Codex of de relevante package manager worden opgebouwd.
 11. Git-conflictuitleg vereist leesbare Git-werkmappen en het Git-programma. Als een
     kant of benodigde geschiedenis ontbreekt, meldt Lifeboat onvoldoende bewijs en
     vallen de volledige bestandshashes en expliciete conflictkeuzes terug als basis.
@@ -41,6 +43,11 @@
     Gewijzigde records of metadata, ongeldige JSONL, een lege rollout, een langere
     doelchat en iedere andere afwijking vragen een expliciete gebruikerskeuze.
     Lifeboat voert geen algemene chatmerge uit.
-13. Versie 3.4.4 is stabiel na bron-, EXE- en uitgepakte-ZIP-tests en een geslaagde
+13. Versie 3.4.10 is stabiel na bron-, EXE- en uitgepakte-ZIP-tests en een geslaagde
     fysieke Windows 11-route van A naar B en terug. Een fysieke Windows 10-test en
     het lostrekken van een echte USB-stick tijdens schrijven zijn nog niet vastgelegd.
+14. Herstel is transactioneel met automatische rollback, maar nog geen algemeen
+    hervatbare bestandskopieerengine. Zeer grote restores kunnen veel tijd kosten.
+    Versie 3.4.10 telt logische bytes, geschatte bestandssysteemallocatie en een
+    veiligheidsreserve conservatief mee en controleert vrije ruimte opnieuw tijdens
+    grote schrijfacties; een ander proces kan ruimte nog steeds onverwacht vullen.

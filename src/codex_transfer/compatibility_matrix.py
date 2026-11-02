@@ -28,12 +28,21 @@ AUTOMATED_SCENARIOS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "low-disk-space",
         "Low destination disk space is rejected before copying",
-        ("lowDiskSpaceRejected",),
+        (
+            "lowDiskSpaceRejected",
+            "restorePeakSpaceIncludesAllocationOverhead",
+            "restoreRuntimeSpaceReserveEnforced",
+        ),
     ),
     (
         "interruption-and-rollback",
         "Interrupted project and conversation restore rolls back",
-        ("rollbackAfterProjectQuarantine", "rollbackAfterProjectActivation", "conversationRollbackPreserved"),
+        (
+            "rollbackAfterProjectQuarantine",
+            "rollbackAfterProjectActivation",
+            "conversationRollbackPreserved",
+            "rollbackSurvivesFailureJournalENOSPC",
+        ),
     ),
     (
         "corrupt-backup",
@@ -52,7 +61,9 @@ AUTOMATED_SCENARIOS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
             "completePhase3Inventory",
             "conversationMirrorExact",
             "paginatedHistoryProjectionOffsetsReset",
-            "inaccessibleDependencyMetadataReported",
+            "dependencyPreflightFindsFullScope",
+            "dependencyExclusionsRequireExplicitApproval",
+            "dependencyExclusionReportRoundTrips",
             "otherUnreadableDirectoriesFailClosed",
         ),
     ),

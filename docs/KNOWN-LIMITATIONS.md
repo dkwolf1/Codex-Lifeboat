@@ -1,4 +1,4 @@
-# Known limitations of release 3.4.4
+# Known limitations of release 3.4.10
 
 1. There is no published stable import contract for the local Codex database.
    The assistant therefore inspects schemas and must be retested after major future
@@ -24,10 +24,12 @@
 9. Phase 10.1 reports logical file sizes. Package-manager hardlinks or deduplicated
    files (for example a pnpm store plus `node_modules`) can use less physical space
    on the source disk, but a portable backup stores each visible file independently.
-10. Selection is currently per complete project. Codex data is always included and
-    individual dependency/cache subfolders are not silently removed. Excluding a
-    project keeps its chats as projectless history, but its files are not recoverable
-    from that backup and the original working directory may not exist after restore.
+10. Selection is per complete project. Codex data is always included. Inaccessible
+    paths below `.chatgpt-projects/**/work/_deps` are excluded only after a complete
+    read-only preflight displays the exact set and the user explicitly approves it.
+    Any path outside that dependency boundary, any changed set, and any unclassified
+    error remains fatal. Excluded dependency payload must be reconstructed by Codex
+    or the relevant package manager after restore.
 11. Git conflict explanations require a readable Git worktree and the Git executable.
     When either side or the required history is unavailable, Lifeboat reports
     insufficient evidence and falls back to its complete file hashes and explicit
@@ -38,6 +40,11 @@
     normalization. Edited records, changed metadata, malformed JSONL, an empty
     rollout, destination-ahead history, and arbitrary divergence require an
     explicit user decision. Lifeboat does not perform a general-purpose chat merge.
-13. Version 3.4.4 is stable after automated source/EXE/ZIP testing and a successful
+13. Version 3.4.10 is stable after automated source/EXE/ZIP testing and a successful
     physical Windows 11 A-to-B-to-A hand-off. A physical Windows 10 run and removal
     of a real USB drive during an active write are not yet documented.
+14. Restore is transactional with automatic rollback but is not yet a general
+    resumable file-copy engine. Very large restores can take substantial time.
+    Version 3.4.10 conservatively accounts for logical bytes, estimated allocation
+    overhead and a safety reserve, and rechecks free space during large writes;
+    another process can still consume space unexpectedly.

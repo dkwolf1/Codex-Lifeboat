@@ -23,6 +23,9 @@ from . import (
 
 
 PLAN_VERSION = 2
+RESTORE_SPACE_RESERVE_BYTES = 1_000_000_000
+ESTIMATED_ALLOCATION_BYTES_PER_FILE = 4096
+RESTORE_SPACE_MARGIN_PERCENT = 5
 PLAN_STATES = {"identical", "incoming", "destination-only", "removed", "conflicting"}
 CONVERSATION_DECISIONS = (
     "keep-source",
@@ -399,8 +402,44 @@ def _target_conversations(
     return result
 
 
+def allocation_unit(path: str | Path) -> int:
+    """Return a conservative filesystem allocation unit for space planning."""
+    candidate = Path(path)
+    anchor = candidate.anchor or str(candidate.resolve(strict=False).anchor)
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            sectors_per_cluster = ctypes.c_ulong()
+            bytes_per_sector = ctypes.c_ulong()
+            free_clusters = ctypes.c_ulong()
+            total_clusters = ctypes.c_ulong()
+            success = ctypes.windll.kernel32.GetDiskFreeSpaceW(
+                str(anchor),
+                ctypes.byref(sectors_per_cluster),
+                ctypes.byref(bytes_per_sector),
+                ctypes.byref(free_clusters),
+                ctypes.byref(total_clusters),
+            )
+            if success:
+                measured = sectors_per_cluster.value * bytes_per_sector.value
+                if measured > 0:
+                    return max(ESTIMATED_ALLOCATION_BYTES_PER_FILE, measured)
+        except (AttributeError, OSError, TypeError, ValueError):
+            pass
+    else:
+        try:
+            measured = os.statvfs(anchor).f_frsize
+            if measured > 0:
+                return max(ESTIMATED_ALLOCATION_BYTES_PER_FILE, measured)
+        except (AttributeError, OSError, ValueError):
+            pass
+    return ESTIMATED_ALLOCATION_BYTES_PER_FILE
+
+
 def _free_space(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     required: dict[str, int] = {}
+    files: dict[str, int] = {}
     for item in items:
         if item.get("proposedAction") not in {
             "create", "replace", "replace-managed-data", "keep-both",
@@ -412,8 +451,16 @@ def _free_space(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         anchor = Path(str(target)).anchor or str(Path(str(target)).resolve(strict=False).anchor)
         required[anchor] = required.get(anchor, 0) + int(item.get("requiredBytes", 0))
+        files[anchor] = files.get(anchor, 0) + int(item.get("sourceFiles", 0))
     result: list[dict[str, Any]] = []
     for anchor, needed in sorted(required.items()):
+        unit = allocation_unit(anchor)
+        allocation_overhead = files.get(anchor, 0) * unit
+        margin = max(
+            RESTORE_SPACE_RESERVE_BYTES,
+            ((needed + allocation_overhead) * RESTORE_SPACE_MARGIN_PERCENT + 99) // 100,
+        )
+        peak_required = needed + allocation_overhead + margin
         try:
             free = shutil.disk_usage(anchor).free
         except OSError:
@@ -422,8 +469,13 @@ def _free_space(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "volume": anchor,
                 "requiredBytes": needed,
+                "sourceFiles": files.get(anchor, 0),
+                "allocationUnitBytes": unit,
+                "allocationOverheadBytes": allocation_overhead,
+                "reserveBytes": margin,
+                "peakRequiredBytes": peak_required,
                 "freeBytes": free,
-                "sufficient": free >= needed,
+                "sufficient": free >= peak_required,
             }
         )
     return result
@@ -450,7 +502,12 @@ def _refresh_plan(plan: dict[str, Any]) -> dict[str, Any]:
         blocking_reasons.append("One or more external project roots are unresolved.")
     for disk in disks:
         if not disk["sufficient"]:
-            blocking_reasons.append(f"Insufficient free space on {disk['volume']}.")
+            blocking_reasons.append(
+                "Insufficient peak free space on "
+                f"{disk['volume']} (required including allocation overhead and "
+                f"reserve: {disk['peakRequiredBytes']:,} bytes; "
+                f"available: {disk['freeBytes']:,} bytes)."
+            )
     if plan.get("cancelled"):
         blocking_reasons.append("Restore was cancelled during conflict review.")
     write_set = [
@@ -753,6 +810,7 @@ def build_restore_plan(
                 "proposedAction": action,
                 "selected": action in {"create", "replace"},
                 "sourceBytes": source_bytes,
+                "sourceFiles": int(project.get("fileCount", 0)),
                 "targetBytes": target_bytes,
                 "targetFiles": target_files,
                 "requiredBytes": source_bytes + (target_bytes if action == "replace" else 0),
@@ -824,6 +882,7 @@ def build_restore_plan(
                 "proposedAction": action,
                 "selected": action in {"create", "replace"},
                 "sourceBytes": source_bytes,
+                "sourceFiles": 1 if source_bytes else 0,
                 "targetBytes": int(target.get("size", 0)) if target else 0,
                 "requiredBytes": source_bytes,
                 "blocking": blocking,
@@ -992,6 +1051,11 @@ def build_restore_plan(
         for path, (size, _digest) in hash_rows.items()
         if path.startswith("codex/") or path.startswith("attachments/")
     )
+    codex_source_files = sum(
+        1
+        for path in hash_rows
+        if path.startswith("codex/") or path.startswith("attachments/")
+    )
     codex_target = target_profile / ".codex"
     codex_target_bytes = sum(
         path.stat().st_size
@@ -1009,6 +1073,7 @@ def build_restore_plan(
             "proposedAction": "replace-managed-data",
             "selected": True,
             "sourceBytes": codex_source_bytes,
+            "sourceFiles": codex_source_files,
             "targetBytes": codex_target_bytes,
             "requiredBytes": codex_source_bytes + codex_target_bytes,
             "blocking": False,

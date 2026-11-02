@@ -3,15 +3,17 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Stable: 3.4.9](https://img.shields.io/badge/stable-v3.4.9-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.9)
+[![Stable: 3.4.10](https://img.shields.io/badge/stable-v3.4.10-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.10)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Stable release:** version 3.4.9 safely reports and skips only inaccessible,
-> reconstructable Python distribution metadata below Codex project dependency
-> roots. It passes all 90 source checks and 12 automated compatibility scenarios.
+> **Stable release:** version 3.4.10 preflights complete Codex project dependency
+> trees and requires explicit review of the exact inaccessible paths before they
+> can be excluded. Large restores use conservative peak-space and runtime reserve
+> checks, and rollback is still attempted if a full disk prevents an error-journal
+> update. It passes all 95 source checks and 12 automated compatibility scenarios.
 > The migration workflow also has prior
 > physical Windows 11 PC A → PC B → PC A evidence. Keep an independent copy of
 > irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
@@ -20,7 +22,7 @@ https://mechscript.nl/en/codex-lifeboat-backup-restore-migrate-en/
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.9 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.9)
+### [Download Codex Lifeboat 3.4.10 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.10)
 
 On the release page, download only:
 
@@ -54,7 +56,8 @@ It includes:
 - Consistent SQLite snapshots and SHA-256 integrity validation
 - Automatic Windows profile and project-path translation
 - A reviewed Project Location Mapper for external-drive, USB, and network roots
-- A read-only comparison plan with conflicts, selected actions, and free-space checks
+- A read-only comparison plan with conflicts, selected actions, and conservative
+  peak-space checks including file-allocation overhead and a safety reserve
 - Per-chat keep-backup, keep-computer, keep-both, skip, and cancel decisions
 - Destination-only projects retained by default, with explicit archive or
   recoverable-delete choices
@@ -72,6 +75,9 @@ It includes:
 - An explicit destination picker on every backup, even when one USB drive is found
 - A Windows path-length preflight that takes the short staging directory, final
   backup name, selected payload, long-path setting, and filename limits into account
+- A complete read-only preflight of `.chatgpt-projects/**/work/_deps`, with a
+  scrollable review and explicit approval of the exact inaccessible dependency
+  paths; new, changed, or ordinary-data failures remain fatal
 - Narrow copy-error tolerance for reconstructable Python bytecode cache only;
   skipped cache files remain visible as warnings while ordinary files stay mandatory
 - Clearly marked incomplete staging evidence that is never offered as a restore source
