@@ -4,17 +4,19 @@
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Stabiele release:** versie 3.4.9 rapporteert en negeert uitsluitend
-> ontoegankelijke, reconstrueerbare Python-distributiemetadata onder Codex-
-> dependencyroots. Alle 90 broncontroles en 12 geautomatiseerde
-> compatibiliteitsscenario's slagen. Voor de
+> **Stabiele release:** versie 3.4.10 controleert vooraf volledige Codex-
+> dependencybomen en vereist expliciete goedkeuring van de exacte ontoegankelijke
+> paden voordat ze mogen worden uitgesloten. Grote restores gebruiken een
+> conservatieve piekruimte- en runtime-reservecontrole; rollback wordt ook gestart
+> als een volle schijf het foutjournaal niet kan bijwerken. Alle 95 broncontroles en
+> 12 geautomatiseerde compatibiliteitsscenario's slagen. Voor de
 > migratiewerkwijze bestaat bovendien eerder fysiek bewijs van een Windows 11-
 > route van pc A naar pc B en terug. Bewaar onvervangbare gegevens ook apart en
 > lees de [testhandleiding](TESTHANDLEIDING.md).
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.9](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.9)
+### [Download Codex Lifeboat 3.4.10](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.10)
 
 Download op de releasepagina uitsluitend dit bestand:
 
@@ -52,7 +54,11 @@ paden veilig passen. Is die ondersteuning uitgeschakeld of onbekend en bereikt e
 verplicht verwacht pad de klassieke grens van 260 tekens, dan vraagt Lifeboat vóór
 het grote kopieerwerk om een kortere doelmap. Alleen een te lange reconstrueerbare
 Python-cache blokkeert de kernback-up niet: weigert Windows die kopie, dan wordt dit
-vastgelegd en eindigt de back-up geldig met waarschuwingen.
+vastgelegd en eindigt de back-up geldig met waarschuwingen. Codex-projectdependencies
+onder `work/_deps` krijgen vooraf een volledige alleen-lezen controle.
+Ontoegankelijke dependency-paden worden samen in één venster getoond en alleen na
+expliciete goedkeuring exact uitgesloten; iedere nieuwe of gewone-datafout blijft
+blokkerend.
 
 ## Herstellen op een nieuwe computer
 

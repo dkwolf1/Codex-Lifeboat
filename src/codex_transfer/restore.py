@@ -28,7 +28,7 @@ except ImportError:
     from validate import validate
 
 
-RESTORE_VERSION = "3.4.9"
+RESTORE_VERSION = "3.4.10"
 PROTECTED_NAMES = {"auth.json", "installation_id", "cap_sid"}
 RUNTIME_NAMES = {
     ".sandbox",
@@ -49,6 +49,41 @@ PAGINATED_HISTORY_DATABASE_NAMES = backup.PAGINATED_HISTORY_DATABASE_NAMES
 
 class RestoreError(RuntimeError):
     pass
+
+
+def _existing_space_probe(path: Path) -> Path:
+    probe = path.resolve(strict=False)
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    return probe
+
+
+def _ensure_restore_space(
+    destination: Path,
+    pending_bytes: int = 0,
+    pending_files: int = 0,
+) -> None:
+    allocation_overhead = max(0, pending_files) * restore_plan.allocation_unit(
+        destination
+    )
+    required = (
+        max(0, pending_bytes)
+        + allocation_overhead
+        + restore_plan.RESTORE_SPACE_RESERVE_BYTES
+    )
+    try:
+        free = shutil.disk_usage(_existing_space_probe(destination)).free
+    except OSError as exc:
+        raise RestoreError(
+            f"Could not determine free space for restore destination: {destination}"
+        ) from exc
+    if free < required:
+        raise RestoreError(
+            "Restore stopped before exhausting the destination volume: "
+            f"{free:,} bytes free; at least {required:,} bytes are required "
+            "for the pending write, allocation overhead and safety reserve. "
+            "Free space and start the restore again."
+        )
 
 
 def _remove_path(path: Path) -> None:
@@ -117,7 +152,29 @@ def plan_restore_locations(
 
 def _copy_all(source: Path, destination: Path) -> tuple[int, int]:
     warnings: list[str] = []
-    return backup.copy_tree(source, destination, [], warnings)
+    files_since_check = 0
+    bytes_since_check = 0
+
+    def check_space(_source: Path, target: Path, size: int) -> None:
+        nonlocal files_since_check, bytes_since_check
+        files_since_check += 1
+        bytes_since_check += size
+        if (
+            files_since_check == 1
+            or files_since_check >= 1024
+            or bytes_since_check >= 256 * 1024 * 1024
+        ):
+            _ensure_restore_space(target, size, 1)
+            files_since_check = 0
+            bytes_since_check = 0
+
+    return backup.copy_tree(
+        source,
+        destination,
+        [],
+        warnings,
+        before_copy=check_space,
+    )
 
 
 def _same_volume(first: Path, second: Path) -> bool:
@@ -263,8 +320,16 @@ def prepare_restore(
                 "The reviewed restore plan is inconsistent: "
                 + "; ".join(decision_errors[:5])
             )
+        # Free space may have changed since the plan was reviewed. Refresh the
+        # conservative peak requirement immediately before creating any safety
+        # copy or modifying a destination.
+        restore_plan._refresh_plan(comparison_plan)
         if not comparison_plan.get("ready"):
-            raise RestoreError("The reviewed restore plan still contains blocking issues.")
+            reasons = comparison_plan.get("blockingReasons", [])
+            raise RestoreError(
+                "The reviewed restore plan still contains blocking issues: "
+                + "; ".join(str(value) for value in reasons[:3])
+            )
     location_plan = plan_restore_locations(
         package_root, target_profile, external_roots
     )
@@ -899,6 +964,7 @@ def _build_restored_database(
 
 
 def _rewrite_copy(source: Path, destination: Path, translator: PathTranslator) -> None:
+    _ensure_restore_space(destination, source.stat().st_size, 1)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(
         f".{destination.name}.restore.tmp"
@@ -1248,6 +1314,11 @@ def _restore_projects(
         backup.write_json(safety_root / "restore-journal.json", journal)
         if progress:
             progress(f"Staging project on destination volume: {target}")
+        _ensure_restore_space(
+            staging,
+            int(item.get("totalBytes", 0)),
+            int(item.get("fileCount", 0)),
+        )
         files, _ = _copy_all(source, staging)
         record["status"] = "staged"
         record["stagedAtUtc"] = backup.utc_now()
@@ -1938,10 +2009,28 @@ def restore_backup(
             journal,
         )
         return journal
-    except Exception:
+    except Exception as original_error:
         journal["error"] = traceback.format_exc()
-        backup.write_json(journal_path, journal)
+        journal_write_error: Exception | None = None
+        try:
+            backup.write_json(journal_path, journal)
+        except Exception as exc:
+            # ENOSPC or another metadata-write failure must never prevent the
+            # already-prepared rollback from running.
+            journal_write_error = exc
         if progress:
             progress("Restore failed; running automatic rollback...")
-        rollback_restore(safety_root, target_profile)
+        try:
+            rollback_restore(safety_root, target_profile)
+        except Exception as rollback_error:
+            details = [
+                f"original failure: {type(original_error).__name__}: {original_error}",
+                f"rollback failure: {type(rollback_error).__name__}: {rollback_error}",
+            ]
+            if journal_write_error is not None:
+                details.append(
+                    "failure journal could not be updated: "
+                    f"{type(journal_write_error).__name__}: {journal_write_error}"
+                )
+            raise RestoreError("; ".join(details)) from original_error
         raise

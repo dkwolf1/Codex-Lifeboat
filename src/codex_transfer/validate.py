@@ -461,6 +461,197 @@ def validate(
         )
     checks["skippedReconstructableDirectories"] = declared_directory_skips
 
+    dependency_preflight_meta = (
+        package.get("dependencyPreflight", {})
+        if isinstance(package.get("dependencyPreflight"), dict)
+        else {}
+    )
+    dependency_meta = (
+        package.get("dependencyExclusions", {})
+        if isinstance(package.get("dependencyExclusions"), dict)
+        else {}
+    )
+    declared_dependency_exclusions = counts.get("dependencyExclusions", 0)
+    if dependency_meta.get("count", 0) != declared_dependency_exclusions:
+        errors.append(
+            "Dependency-exclusion count differs between package metadata and counts."
+        )
+
+    def valid_dependency_payload_path(value: str) -> bool:
+        if not valid_relative_path(value):
+            return False
+        parts = tuple(
+            part.casefold() for part in PurePosixPath(value).parts
+        )
+        if len(parts) < 6 or parts[:3] != (
+            "codex",
+            "portable-profile",
+            ".chatgpt-projects",
+        ):
+            return False
+        payload = parts[3:]
+        return any(
+            index >= 1 and payload[index : index + 2] == ("work", "_deps")
+            for index in range(len(payload) - 1)
+        )
+
+    dependency_preflight_relative = dependency_preflight_meta.get(
+        "reportRelativePath"
+    )
+    preflight_items: list[dict[str, Any]] = []
+    if dependency_preflight_relative:
+        if not valid_relative_path(str(dependency_preflight_relative)):
+            errors.append("Dependency-preflight report path is invalid.")
+        else:
+            dependency_preflight_path = package_root / Path(
+                *PurePosixPath(str(dependency_preflight_relative)).parts
+            )
+            if not dependency_preflight_path.is_file():
+                errors.append("Dependency-preflight report is missing.")
+            else:
+                try:
+                    dependency_preflight_report = read_json(
+                        dependency_preflight_path
+                    )
+                    preflight_items = dependency_preflight_report.get(
+                        "exclusions", []
+                    )
+                    blocking_items = dependency_preflight_report.get(
+                        "blockingIssues", []
+                    )
+                    if (
+                        not isinstance(preflight_items, list)
+                        or not isinstance(blocking_items, list)
+                        or dependency_preflight_report.get("exclusionCount")
+                        != declared_dependency_exclusions
+                        or dependency_preflight_report.get("blockingCount") != 0
+                        or blocking_items
+                    ):
+                        errors.append(
+                            "Dependency-preflight report is inconsistent or contains blockers."
+                        )
+                    if str(dependency_preflight_relative) not in hash_rows:
+                        errors.append(
+                            "Dependency-preflight report is not hash-protected."
+                        )
+                except Exception as exc:
+                    errors.append(f"Dependency-preflight report is invalid: {exc}")
+    elif dependency_meta or (
+        package_root / "reports" / "dependency-preflight.json"
+    ).exists():
+        errors.append("Dependency-preflight metadata or report is incomplete.")
+
+    dependency_report_relative = dependency_meta.get("reportRelativePath")
+    if declared_dependency_exclusions:
+        if (
+            not isinstance(declared_dependency_exclusions, int)
+            or declared_dependency_exclusions < 0
+            or dependency_meta.get("explicitlyApproved") is not True
+        ):
+            errors.append("Dependency exclusions are not explicitly approved.")
+        elif not dependency_report_relative or not valid_relative_path(
+            str(dependency_report_relative)
+        ):
+            errors.append("Dependency-exclusion report path is missing or invalid.")
+        else:
+            dependency_report_path = package_root / Path(
+                *PurePosixPath(str(dependency_report_relative)).parts
+            )
+            if not dependency_report_path.is_file():
+                errors.append("Dependency-exclusion report is missing.")
+            else:
+                try:
+                    dependency_report = read_json(dependency_report_path)
+                    dependency_items = dependency_report.get("items", [])
+                    if (
+                        dependency_report.get("approvalRequired") is not True
+                        or dependency_report.get("count")
+                        != declared_dependency_exclusions
+                        or not isinstance(dependency_items, list)
+                        or len(dependency_items) != declared_dependency_exclusions
+                    ):
+                        errors.append(
+                            "Dependency-exclusion report count or approval state is invalid."
+                        )
+                    else:
+                        for item in dependency_items:
+                            backup_relative = str(
+                                item.get("backupRelativePath") or ""
+                            )
+                            path_type = item.get("pathType")
+                            classification_valid = bool(
+                                item.get("kind") == "python-dependency-payload"
+                                and path_type in {"directory", "file"}
+                                and (
+                                    (
+                                        path_type == "directory"
+                                        and item.get("contentsEnumerated") is False
+                                        and item.get("fileCount") is None
+                                        and item.get("scope")
+                                        == "entire-directory-subtree"
+                                    )
+                                    or (
+                                        path_type == "file"
+                                        and item.get("contentsEnumerated") is None
+                                        and item.get("fileCount") == 1
+                                        and item.get("scope") == "single-file"
+                                    )
+                                )
+                            )
+                            if not item.get("sourcePath") or not item.get("error"):
+                                errors.append(
+                                    "Dependency-exclusion item lacks source or error details."
+                                )
+                            if not classification_valid:
+                                errors.append(
+                                    "Dependency-exclusion item has an invalid classification."
+                                )
+                            if not valid_dependency_payload_path(backup_relative):
+                                errors.append(
+                                    "Dependency-exclusion item is outside a project work/_deps payload."
+                                )
+                            elif (
+                                package_root
+                                / Path(*PurePosixPath(backup_relative).parts)
+                            ).exists():
+                                errors.append(
+                                    "Dependency-exclusion payload unexpectedly exists: "
+                                    f"{backup_relative}"
+                                )
+                        preflight_keys = {
+                            (
+                                str(item.get("backupRelativePath") or "").casefold(),
+                                str(item.get("pathType") or "").casefold(),
+                            )
+                            for item in preflight_items
+                            if isinstance(item, dict)
+                        }
+                        report_keys = {
+                            (
+                                str(item.get("backupRelativePath") or "").casefold(),
+                                str(item.get("pathType") or "").casefold(),
+                            )
+                            for item in dependency_items
+                            if isinstance(item, dict)
+                        }
+                        if preflight_keys != report_keys:
+                            errors.append(
+                                "Approved dependency exclusions differ from the preflight."
+                            )
+                    if str(dependency_report_relative) not in hash_rows:
+                        errors.append(
+                            "Dependency-exclusion report is not hash-protected."
+                        )
+                except Exception as exc:
+                    errors.append(f"Dependency-exclusion report is invalid: {exc}")
+    elif dependency_report_relative or (
+        package_root / "reports" / "dependency-exclusions.json"
+    ).exists():
+        errors.append(
+            "Dependency-exclusion report exists without declared exclusions."
+        )
+    checks["dependencyExclusions"] = declared_dependency_exclusions
+
     actual_all = {rel(path, package_root).lower() for path in package_root.rglob("*")}
     for forbidden in FORBIDDEN_CODEX_PATHS:
         if forbidden.lower() in actual_all:

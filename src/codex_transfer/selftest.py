@@ -11,7 +11,7 @@ import sys
 import tempfile
 import uuid
 from unittest import mock
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from . import (
@@ -793,6 +793,7 @@ def _gui_smoke_test() -> bool:
     from .gui import (
         BackupResultDialog,
         BackupSelectionDialog,
+        DependencyPreflightDialog,
         DiagnosticsDialog,
         PathPortabilityDialog,
         RecoveryDialog,
@@ -817,6 +818,8 @@ def _gui_smoke_test() -> bool:
             and app.t("delete") == "Project verwijderen"
             and app.t("recovery") == "Herstelpunten"
             and app.t("diagnostics") == "Diagnose"
+            and app.t("dependency_preflight_approve")
+            == "Deze exacte uitsluitingen goedkeuren"
         )
         app.language.set("en")
         app._translate()
@@ -831,6 +834,8 @@ def _gui_smoke_test() -> bool:
             and app.t("delete") == "Delete project"
             and app.t("recovery") == "Recovery points"
             and app.t("diagnostics") == "Diagnostics"
+            and app.t("dependency_preflight_approve")
+            == "Approve these exact exclusions"
         )
         app._show_tab("overview")
         app.backup_button.invoke()
@@ -984,6 +989,23 @@ def _gui_smoke_test() -> bool:
         app.update_idletasks()
         result_dialog_created = result_dialog.winfo_exists() == 1
         result_dialog.destroy()
+        dependency_dialog = DependencyPreflightDialog(
+            app,
+            {
+                "exclusions": [
+                    {
+                        "sourceRelativePath": "project/work/_deps/PIL",
+                        "pathType": "directory",
+                        "error": "[WinError 5] Access is denied",
+                    }
+                ],
+                "blockingIssues": [],
+            },
+        )
+        app.update_idletasks()
+        dependency_dialog_created = dependency_dialog.winfo_exists() == 1
+        dependency_dialog._approve()
+        dependency_dialog_approved = dependency_dialog.approved
         selection_dialog = BackupSelectionDialog(
             app,
             {
@@ -1104,6 +1126,7 @@ def _gui_smoke_test() -> bool:
             and decision_button_enabled and decision_resolved
             and archive_button_enabled and project_decision_resolved
             and result_dialog_created and recovery_dialog_created
+            and dependency_dialog_created and dependency_dialog_approved
             and diagnostics_dialog_created
             and selection_default_complete and selection_exclusion_visible
             and portability_dialog_created and portability_local_toggle
@@ -1207,6 +1230,52 @@ def _low_disk_space_test() -> bool:
     except backup.BackupError:
         rejected = True
     return bool(rejected and backup.ensure_backup_space(estimated, required) == required)
+
+
+def _restore_peak_space_test() -> tuple[bool, bool]:
+    target = Path.cwd() / "restore-space-test"
+    items = [
+        {
+            "proposedAction": "replace-managed-data",
+            "target": str(target),
+            "requiredBytes": 2_000_000_000,
+            "sourceFiles": 5_000_000,
+        }
+    ]
+    expected_overhead = (
+        5_000_000 * restore_plan.ESTIMATED_ALLOCATION_BYTES_PER_FILE
+    )
+    with mock.patch.object(
+        restore_plan, "allocation_unit", return_value=4096
+    ), mock.patch.object(
+        restore_plan.shutil,
+        "disk_usage",
+        return_value=shutil._ntuple_diskusage(0, 0, 10_000_000_000),
+    ):
+        requirement = restore_plan._free_space(items)[0]
+    conservative_plan = bool(
+        requirement.get("allocationOverheadBytes") == expected_overhead
+        and requirement.get("reserveBytes", 0)
+        >= restore_plan.RESTORE_SPACE_RESERVE_BYTES
+        and requirement.get("peakRequiredBytes", 0)
+        > requirement.get("freeBytes", 0)
+        and requirement.get("sufficient") is False
+    )
+    runtime_rejected = False
+    with mock.patch.object(
+        restore_plan, "allocation_unit", return_value=4096
+    ), mock.patch.object(
+        restore.shutil,
+        "disk_usage",
+        return_value=shutil._ntuple_diskusage(
+            0, 0, restore_plan.RESTORE_SPACE_RESERVE_BYTES
+        ),
+    ):
+        try:
+            restore._ensure_restore_space(target, 1, 1)
+        except restore.RestoreError:
+            runtime_rejected = True
+    return conservative_plan, runtime_rejected
 
 
 def _project_identity_model_test(root: Path) -> bool:
@@ -1421,8 +1490,8 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
         exclude_fragments: list[str],
         warnings: list[str],
         skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
-        skipped_reconstructable_directories: list[dict[str, Any]] | None = None,
-        allow_dependency_metadata_skip: bool = False,
+        dependency_exclusions: dict[str, dict[str, Any]] | None = None,
+        applied_dependency_exclusions: list[dict[str, Any]] | None = None,
     ) -> tuple[int, int]:
         if source.name.lower() == "plugins":
             raise PermissionError(87, "plugin runtime must not be opened", str(source))
@@ -1432,8 +1501,8 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
             exclude_fragments,
             warnings,
             skipped_reconstructable_cache,
-            skipped_reconstructable_directories,
-            allow_dependency_metadata_skip,
+            dependency_exclusions,
+            applied_dependency_exclusions,
         )
 
     warnings: list[str] = []
@@ -2482,57 +2551,97 @@ def _reconstructable_cache_policy_test(
     return cache_warning_complete, mandatory_stays_strict
 
 
-def _dependency_metadata_directory_policy_test(root: Path) -> tuple[bool, bool]:
-    profile = root / "dependency-metadata-user"
+def _dependency_preflight_policy_test(root: Path) -> tuple[bool, bool, bool, bool]:
+    profile = root / "dependency-preflight-user"
     codex, project = _write_source(profile)
     chatgpt_projects = codex / ".chatgpt-projects"
-    blocked = (
-        chatgpt_projects
-        / "work"
-        / "_deps"
-        / "pillow-12.3.0.dist-info"
-    )
-    blocked.mkdir(parents=True)
-    (blocked / "METADATA").write_text(
+    work = chatgpt_projects / "project-123" / "work"
+    blocked_metadata = work / "_deps" / "pillow-12.3.0.dist-info"
+    blocked_library = work / "_deps" / "PIL"
+    blocked_metadata.mkdir(parents=True)
+    blocked_library.mkdir(parents=True)
+    (blocked_metadata / "METADATA").write_text(
         "Name: Pillow\nVersion: 12.3.0\n", encoding="utf-8"
     )
-    portable_marker = chatgpt_projects / "work" / "project-registration.json"
+    (blocked_library / "Image.py").write_text("class Image: pass\n", encoding="utf-8")
+    portable_marker = work / "project-registration.json"
     portable_marker.write_text('{"portable":true}\n', encoding="utf-8")
     source_before = _hash_tree(profile)
-    destination = root / "dependency-metadata-usb"
-    config = root / "dependency-metadata-config.json"
-    backup.write_json(
-        config,
-        {
-            "configVersion": 1,
-            "destinationRoot": str(destination),
-            "includeAttachments": True,
-            "projects": [{"path": str(project), "required": True}],
-            "additionalPortablePaths": [],
-            "excludeDirectoryNames": [],
-            "projectRegistryPath": str(
-                root / "dependency-metadata-state" / "project-registry.json"
-            ),
-            "lineageStatePath": str(
-                root / "dependency-metadata-state" / "lineage-state.json"
-            ),
-            "deviceStatePath": str(
-                root / "dependency-metadata-state" / "device.json"
-            ),
-        },
-    )
+    destination = root / "dependency-preflight-usb"
+    config = root / "dependency-preflight-config.json"
+    config_data = {
+        "configVersion": 1,
+        "destinationRoot": str(destination),
+        "includeAttachments": True,
+        "projects": [{"path": str(project), "required": True}],
+        "additionalPortablePaths": [],
+        "excludeDirectoryNames": [],
+        "projectRegistryPath": str(
+            root / "dependency-preflight-state" / "project-registry.json"
+        ),
+        "lineageStatePath": str(
+            root / "dependency-preflight-state" / "lineage-state.json"
+        ),
+        "deviceStatePath": str(
+            root / "dependency-preflight-state" / "device.json"
+        ),
+    }
+    backup.write_json(config, config_data)
     original_scandir = backup.os.scandir
-    blocked_key = backup.normalized_source_key(blocked)
-    blocked_error = PermissionError(13, "Access is denied", str(blocked))
-    blocked_error.winerror = 5
+    blocked_paths = (blocked_metadata, blocked_library)
+    blocked_keys = {backup.normalized_source_key(path) for path in blocked_paths}
 
-    def deny_blocked_directory(path: str | os.PathLike[str]):
+    def deny_blocked_directories(path: str | os.PathLike[str]):
         candidate = Path(path)
-        if backup.normalized_source_key(candidate) == blocked_key:
-            raise blocked_error
+        if backup.normalized_source_key(candidate) in blocked_keys:
+            error = PermissionError(13, "Access is denied", str(candidate))
+            error.winerror = 5
+            raise error
         return original_scandir(path)
 
-    with mock.patch.object(backup.os, "scandir", side_effect=deny_blocked_directory):
+    with mock.patch.object(backup.os, "scandir", side_effect=deny_blocked_directories):
+        preview = backup.build_backup_preview(profile, codex)
+
+    dependency_scan = preview.get("dependencyPreflight", {})
+    preview_items = dependency_scan.get("exclusions", [])
+    preview_paths = {
+        str(item.get("sourceRelativePath")) for item in preview_items
+    }
+    expected_preview_paths = {
+        "project-123/work/_deps/PIL",
+        "project-123/work/_deps/pillow-12.3.0.dist-info",
+    }
+    full_scope_found = bool(
+        dependency_scan.get("exclusionCount") == 2
+        and dependency_scan.get("blockingCount") == 0
+        and preview_paths == expected_preview_paths
+        and all(item.get("pathType") == "directory" for item in preview_items)
+    )
+
+    unapproved_failure: Exception | None = None
+    with mock.patch.object(backup.os, "scandir", side_effect=deny_blocked_directories):
+        try:
+            backup.build_backup(
+                argparse.Namespace(
+                    config=str(config),
+                    destination=str(destination),
+                    source_profile=str(profile),
+                    source_codex_home=str(codex),
+                    allow_running_test=True,
+                )
+            )
+        except Exception as exc:
+            unapproved_failure = exc
+
+    config_data["approvedDependencyExclusions"] = [
+        {
+            "sourcePath": item.get("sourcePath"),
+            "pathType": item.get("pathType"),
+        }
+        for item in preview_items
+    ]
+    backup.write_json(config, config_data)
+    with mock.patch.object(backup.os, "scandir", side_effect=deny_blocked_directories):
         package = backup.build_backup(
             argparse.Namespace(
                 config=str(config),
@@ -2543,32 +2652,37 @@ def _dependency_metadata_directory_policy_test(root: Path) -> tuple[bool, bool]:
             )
         )
 
-    directory_report_path = (
-        package / "reports" / "skipped-reconstructable-directories.json"
-    )
-    directory_report = backup.read_json(directory_report_path)
+    preflight_report_path = package / "reports" / "dependency-preflight.json"
+    exclusion_report_path = package / "reports" / "dependency-exclusions.json"
+    preflight_report = backup.read_json(preflight_report_path)
+    exclusion_report = backup.read_json(exclusion_report_path)
     package_manifest = backup.read_json(package / "manifest" / "package.json")
     backup_report = backup.read_json(package / "reports" / "backup-report.json")
     validation = validate(package, False)
     from .gui import _backup_result_model
 
     result_model = _backup_result_model(package, validation)
-    report_item = (directory_report.get("items") or [{}])[0]
-    blocked_relative = (
-        "codex/portable-profile/.chatgpt-projects/"
-        "work/_deps/pillow-12.3.0.dist-info"
-    )
+    report_paths = {
+        str(item.get("backupRelativePath"))
+        for item in exclusion_report.get("items", [])
+    }
+    blocked_relatives = {
+        "codex/portable-profile/.chatgpt-projects/project-123/work/_deps/PIL",
+        "codex/portable-profile/.chatgpt-projects/project-123/work/_deps/"
+        "pillow-12.3.0.dist-info",
+    }
     copied_marker = (
         package
         / "codex"
         / "portable-profile"
         / ".chatgpt-projects"
+        / "project-123"
         / "work"
         / "project-registration.json"
     )
 
-    target_profile = root / "dependency-metadata-target"
-    _write_target(target_profile, "DEPENDENCY-METADATA")
+    target_profile = root / "dependency-preflight-target"
+    _write_target(target_profile, "DEPENDENCY-PREFLIGHT")
     prepared = restore.prepare_restore(
         package, target_profile, allow_running_test=True
     )
@@ -2579,64 +2693,67 @@ def _dependency_metadata_directory_policy_test(root: Path) -> tuple[bool, bool]:
         target_profile
         / ".codex"
         / ".chatgpt-projects"
+        / "project-123"
         / "work"
         / "project-registration.json"
     )
-    restored_blocked = (
-        target_profile
-        / ".codex"
-        / ".chatgpt-projects"
-        / "work"
-        / "_deps"
-        / "pillow-12.3.0.dist-info"
+    restored_dependency_root = (
+        target_profile / ".codex" / ".chatgpt-projects" / "project-123" / "work" / "_deps"
     )
-    supported_case = bool(
+    restored_blocked_paths = (
+        restored_dependency_root / "PIL",
+        restored_dependency_root / "pillow-12.3.0.dist-info",
+    )
+    explicit_approval_required = bool(
+        isinstance(unapproved_failure, backup.BackupError)
+        and "not explicitly approved" in str(unapproved_failure)
+    )
+    supported_round_trip = bool(
         validation.get("valid")
-        and directory_report.get("count") == 1
-        and report_item.get("sourcePath") == str(blocked)
-        and report_item.get("backupRelativePath") == blocked_relative
-        and report_item.get("errorType") == "PermissionError"
-        and report_item.get("kind") == "python-distribution-metadata"
-        and report_item.get("pathType") == "directory"
-        and report_item.get("contentsEnumerated") is False
-        and report_item.get("fileCount") is None
-        and package_manifest.get("counts", {}).get(
-            "skippedReconstructableDirectories"
+        and preflight_report.get("exclusionCount") == 2
+        and preflight_report.get("blockingCount") == 0
+        and exclusion_report.get("approvalRequired") is True
+        and exclusion_report.get("count") == 2
+        and report_paths == blocked_relatives
+        and all(
+            item.get("kind") == "python-dependency-payload"
+            and item.get("pathType") == "directory"
+            and item.get("scope") == "entire-directory-subtree"
+            for item in exclusion_report.get("items", [])
         )
-        == 1
-        and package_manifest.get("skippedReconstructableDirectories", {}).get(
+        and package_manifest.get("counts", {}).get("dependencyExclusions") == 2
+        and package_manifest.get("dependencyExclusions", {}).get(
             "reportRelativePath"
         )
-        == "reports/skipped-reconstructable-directories.json"
-        and backup_report.get("skippedReconstructableDirectories", {}).get(
-            "count"
+        == "reports/dependency-exclusions.json"
+        and package_manifest.get("dependencyPreflight", {}).get(
+            "reportRelativePath"
         )
-        == 1
+        == "reports/dependency-preflight.json"
+        and backup_report.get("dependencyExclusions", {}).get("count") == 2
         and result_model.get("valid") is True
-        and result_model.get("warnings", {}).get("dependencyMetadata") == 1
+        and result_model.get("warnings", {}).get("dependencyPayload") == 2
         and copied_marker.is_file()
-        and not (package / Path(*Path(blocked_relative).parts)).exists()
+        and all(
+            not (package / Path(*PurePosixPath(relative).parts)).exists()
+            for relative in blocked_relatives
+        )
         and restored.get("status") == "complete"
         and restore.verify_restored(package, target_profile).get("valid")
         and restored_marker.is_file()
-        and not restored_blocked.exists()
+        and all(not path.exists() for path in restored_blocked_paths)
         and source_before == _hash_tree(profile)
     )
 
-    strict_root = root / "dependency-metadata-strict"
+    strict_root = root / "dependency-preflight-strict"
     sharing_violation = PermissionError(13, "Sharing violation")
     sharing_violation.winerror = 32
 
-    def strict_case(
-        label: str,
-        relative: Path,
-        error: OSError,
-        allow_skip: bool,
-    ) -> bool:
-        source = strict_root / label / ".chatgpt-projects"
-        blocked_path = source / relative
+    def scan_case(label: str, relative: Path, error: OSError) -> dict[str, Any]:
+        source_codex = strict_root / label / ".codex"
+        source = source_codex / ".chatgpt-projects"
+        blocked_path = source / "project-123" / relative
         blocked_path.mkdir(parents=True)
-        destination_path = strict_root / label / "destination"
         denied_key = backup.normalized_source_key(blocked_path)
 
         def deny_case(path: str | os.PathLike[str]):
@@ -2645,72 +2762,72 @@ def _dependency_metadata_directory_policy_test(root: Path) -> tuple[bool, bool]:
                 raise error
             return original_scandir(path)
 
-        records: list[dict[str, Any]] = []
-        warnings: list[str] = []
-        failure: Exception | None = None
         with mock.patch.object(backup.os, "scandir", side_effect=deny_case):
-            try:
-                backup.copy_tree(
-                    source,
-                    destination_path,
-                    [],
-                    warnings,
-                    [],
-                    records,
-                    allow_skip,
-                )
-            except Exception as exc:
-                failure = exc
-        return bool(
-            isinstance(failure, backup.BackupError)
-            and not records
-            and not warnings
-        )
+            return backup.dependency_preflight(source_codex)
 
-    strict_cases = bool(
-        strict_case(
+    outside = scan_case(
             "outside-deps",
-            Path("work") / "not-deps" / "pillow-12.3.0.dist-info",
+            Path("work") / "project-data",
             PermissionError(13, "Access is denied"),
-            True,
         )
-        and strict_case(
-            "non-metadata",
-            Path("work") / "_deps" / "important-project-data",
-            PermissionError(13, "Access is denied"),
-            True,
-        )
-        and strict_case(
+    wrong_error = scan_case(
             "wrong-error",
             Path("work") / "_deps" / "pillow-12.3.0.dist-info",
             OSError(123, "Not an access-denied error"),
-            True,
         )
-        and strict_case(
+    sharing = scan_case(
             "sharing-violation",
             Path("work") / "_deps" / "pillow-12.3.0.dist-info",
             sharing_violation,
-            True,
         )
-        and strict_case(
-            "not-opted-in",
-            Path("work") / "_deps" / "pillow-12.3.0.dist-info",
-            PermissionError(13, "Access is denied"),
-            False,
-        )
-        and not backup.record_skipped_reconstructable_directory(
-            blocked,
-            strict_root / "unreported-destination",
-            chatgpt_projects,
-            blocked_error,
-            [],
-            None,
-        )
+    ordinary_data_strict = bool(
+        outside.get("blockingCount") == 1
+        and outside.get("exclusionCount") == 0
+        and wrong_error.get("blockingCount") == 1
+        and wrong_error.get("exclusionCount") == 0
+        and sharing.get("blockingCount") == 1
+        and sharing.get("exclusionCount") == 0
     )
 
-    directory_report_path.unlink()
+    changed_preflight = dict(dependency_scan)
+    changed_item = dict(preview_items[0])
+    changed_item["sourcePath"] = str(work / "_deps" / "new-package")
+    changed_item["sourceRelativePath"] = "project-123/work/_deps/new-package"
+    changed_item["backupRelativePath"] = (
+        "codex/portable-profile/.chatgpt-projects/project-123/"
+        "work/_deps/new-package"
+    )
+    changed_preflight["exclusions"] = [*preview_items, changed_item]
+    changed_preflight["exclusionCount"] = 3
+    changed_rejected = False
+    try:
+        backup.approved_dependency_exclusion_map(
+            changed_preflight, config_data["approvedDependencyExclusions"]
+        )
+    except backup.BackupError:
+        changed_rejected = True
+    readable_rejected = False
+    try:
+        backup.confirm_approved_dependency_exclusion(
+            blocked_library,
+            next(
+                item
+                for item in preview_items
+                if str(item.get("sourcePath")) == str(blocked_library)
+            ),
+        )
+    except backup.BackupError as exc:
+        readable_rejected = "became readable" in str(exc)
+
+    exclusion_report_path.unlink()
     missing_report_rejected = not validate(package, False).get("valid")
-    return bool(supported_case and missing_report_rejected), strict_cases
+    report_round_trip = bool(supported_round_trip and missing_report_rejected)
+    return (
+        full_scope_found,
+        explicit_approval_required,
+        report_round_trip,
+        bool(ordinary_data_strict and changed_rejected and readable_rejected),
+    )
 
 
 def _rollout_resolution_test(
@@ -3018,8 +3135,13 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     reconstructable_cache_warning, mandatory_copy_failure = (
         _reconstructable_cache_policy_test(root, source_profile)
     )
-    dependency_metadata_warning, dependency_metadata_strict = (
-        _dependency_metadata_directory_policy_test(root)
+    (
+        dependency_preflight_scope,
+        dependency_explicit_approval,
+        dependency_report_round_trip,
+        dependency_payload_strict,
+    ) = (
+        _dependency_preflight_policy_test(root)
     )
     identical_rollout_resolved, different_rollout_resolved = (
         _rollout_resolution_test(root, source_profile)
@@ -3210,7 +3332,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     visual_backup_summary = _backup_result_model(package, package_validation)
     # The path-budget evidence report is part of every package. A frozen portable
     # build also includes its own executable so the restore tool travels with it.
-    expected_visual_file_count = 23 if getattr(sys, "frozen", False) else 22
+    expected_visual_file_count = 24 if getattr(sys, "frozen", False) else 23
     visual_backup_summary_complete = bool(
         visual_backup_summary.get("valid")
         and visual_backup_summary.get("metrics", {}).get("chats") == 3
@@ -3577,13 +3699,33 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         comparison_plan=conversation_rollback_plan,
     )
     conversation_rollback_triggered = False
+    failure_journal_write_attempted = False
+    conversation_journal_path = (
+        Path(conversation_rollback_prepared["safetyRoot"])
+        / "restore-journal.json"
+    )
+    original_write_json = backup.write_json
+
+    def fail_error_journal(path: Path, value: Any) -> None:
+        nonlocal failure_journal_write_attempted
+        if (
+            Path(path).resolve(strict=False)
+            == conversation_journal_path.resolve(strict=False)
+            and isinstance(value, dict)
+            and value.get("error")
+        ):
+            failure_journal_write_attempted = True
+            raise OSError(28, "simulated full disk while writing failure journal")
+        original_write_json(path, value)
+
     try:
-        restore.restore_backup(
-            package,
-            conversation_rollback_profile,
-            Path(conversation_rollback_prepared["safetyRoot"]),
-            fail_after_conversations_for_test=True,
-        )
+        with mock.patch.object(backup, "write_json", side_effect=fail_error_journal):
+            restore.restore_backup(
+                package,
+                conversation_rollback_profile,
+                Path(conversation_rollback_prepared["safetyRoot"]),
+                fail_after_conversations_for_test=True,
+            )
     except Exception:
         conversation_rollback_triggered = True
     conversation_rollback_journal = backup.read_json(
@@ -3592,6 +3734,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     )
     conversation_rollback_preserved = bool(
         conversation_rollback_triggered
+        and failure_journal_write_attempted
         and conversation_rollback_journal.get("status") == "rolled-back"
         and _conversation_snapshot(conversation_rollback_profile)
         == conversation_rollback_before
@@ -4447,6 +4590,9 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     )
     git_conflict_explanation, git_advisory_only = _git_conflict_insight_test(root)
     atomic_metadata_complete = _atomic_metadata_test(root)
+    restore_peak_space_conservative, restore_runtime_space_guard = (
+        _restore_peak_space_test()
+    )
     checks = {
         "packageValid": package_validation["valid"],
         "visualBackupSummaryComplete": visual_backup_summary_complete,
@@ -4462,8 +4608,10 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         ),
         "unreadablePythonCacheWarnsAndContinues": reconstructable_cache_warning,
         "unreadableNormalFileStillFailsClosed": mandatory_copy_failure,
-        "inaccessibleDependencyMetadataReported": dependency_metadata_warning,
-        "otherUnreadableDirectoriesFailClosed": dependency_metadata_strict,
+        "dependencyPreflightFindsFullScope": dependency_preflight_scope,
+        "dependencyExclusionsRequireExplicitApproval": dependency_explicit_approval,
+        "dependencyExclusionReportRoundTrips": dependency_report_round_trip,
+        "otherUnreadableDirectoriesFailClosed": dependency_payload_strict,
         "identicalDuplicateRolloutResolved": identical_rollout_resolved,
         "differentDuplicateRolloutResolved": different_rollout_resolved,
         "compressedDatabaseRolloutPathResolved": compressed_database_rollout_resolved,
@@ -4491,6 +4639,8 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "portablePathModel": _portable_path_model_test(),
         "longUnicodePathModel": _long_unicode_path_model_test(),
         "lowDiskSpaceRejected": _low_disk_space_test(),
+        "restorePeakSpaceIncludesAllocationOverhead": restore_peak_space_conservative,
+        "restoreRuntimeSpaceReserveEnforced": restore_runtime_space_guard,
         "portableLocationsRecorded": portable_locations_recorded,
         "legacyFormat20Supported": supports_format("2.0"),
         "legacyFormat21Supported": supports_format("2.1"),
@@ -4517,6 +4667,9 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "repeatedConversationRestoreIsIdempotent": repeated_conversation_idempotent,
         "explicitConversationDelete": explicit_conversation_delete,
         "conversationRollbackPreserved": conversation_rollback_preserved,
+        "rollbackSurvivesFailureJournalENOSPC": bool(
+            failure_journal_write_attempted and conversation_rollback_preserved
+        ),
         "destinationProjectRetainedByDefault": destination_project_retained_by_default,
         "destinationProjectArchiveComplete": destination_project_archive_complete,
         "destinationProjectDeleteRecoverable": destination_project_delete_recoverable,

@@ -162,6 +162,19 @@ TEXT = {
         "warning_missing_projects": "{count} geregistreerde projectlocaties bestaan niet meer",
         "warning_python_cache": "{count} reconstrueerbare Python-cachebestanden konden niet worden gekopieerd en zijn veilig overgeslagen",
         "warning_dependency_metadata": "{count} ontoegankelijke, reconstrueerbare Python-dependencymappen zijn overgeslagen en op mapniveau gerapporteerd",
+        "warning_dependency_payload": "{count} vooraf gecontroleerde en expliciet goedgekeurde dependency-paden zijn overgeslagen",
+        "dependency_preflight_title": "Ontoegankelijke dependencies controleren",
+        "dependency_preflight_review": "De volledige dependencycontrole vond {count} ontoegankelijke paden onder .chatgpt-projects/**/work/_deps. Alleen de hieronder genoemde paden kunnen worden uitgesloten. Chats en gewone projectbestanden blijven verplicht. Controleer de volledige lijst en keur deze expliciet goed.",
+        "dependency_preflight_blocked": "De controle vond {count} ontoegankelijke verplichte paden buiten het veilige dependencybeleid. De back-up kan niet doorgaan. Er wordt niets uitgesloten.",
+        "dependency_preflight_action": "Actie",
+        "dependency_preflight_path": "Relatief bronpad",
+        "dependency_preflight_type": "Type",
+        "dependency_preflight_error": "Windows-fout",
+        "dependency_preflight_exclude": "Uitsluiten na goedkeuring",
+        "dependency_preflight_stop": "Blokkeert back-up",
+        "dependency_preflight_approve": "Deze exacte uitsluitingen goedkeuren",
+        "dependency_preflight_copy": "Lijst kopiëren",
+        "dependency_preflight_copied": "De volledige preflightlijst staat op het klembord.",
         "warning_other": "{count} overige aandachtspunten staan in het volledige rapport",
         "full_report": "Volledig rapport: {path}",
         "result_location": "Back-uplocatie: {path}",
@@ -291,7 +304,7 @@ TEXT = {
         "plan_target": "Doel",
         "plan_action": "Actie",
         "plan_size": "Omvang",
-        "plan_disk": "Benodigde vrije ruimte: {required} · Beschikbaar: {free}",
+        "plan_disk": "Benodigde piekruimte incl. reserve: {required} · Beschikbaar: {free}",
         "plan_blockers": "Blokkeringen:\n{details}",
         "plan_decision_help": "Selecteer een chat of project en kies wat u wilt bewaren.",
         "plan_item_details": "Geselecteerd onderdeel:\n{reason}\n\nGit-uitleg: {git}",
@@ -431,6 +444,19 @@ TEXT = {
         "warning_missing_projects": "{count} registered project locations no longer exist",
         "warning_python_cache": "{count} reconstructable Python cache files could not be copied and were safely skipped",
         "warning_dependency_metadata": "{count} inaccessible reconstructable Python dependency metadata directories were skipped with directory-level reports",
+        "warning_dependency_payload": "{count} preflighted and explicitly approved dependency paths were skipped",
+        "dependency_preflight_title": "Review inaccessible dependencies",
+        "dependency_preflight_review": "The complete dependency preflight found {count} inaccessible paths below .chatgpt-projects/**/work/_deps. Only the paths listed below can be excluded. Chats and ordinary project files remain mandatory. Review the complete list and approve it explicitly.",
+        "dependency_preflight_blocked": "The preflight found {count} inaccessible mandatory paths outside the safe dependency policy. The backup cannot continue. Nothing will be excluded.",
+        "dependency_preflight_action": "Action",
+        "dependency_preflight_path": "Relative source path",
+        "dependency_preflight_type": "Type",
+        "dependency_preflight_error": "Windows error",
+        "dependency_preflight_exclude": "Exclude after approval",
+        "dependency_preflight_stop": "Blocks backup",
+        "dependency_preflight_approve": "Approve these exact exclusions",
+        "dependency_preflight_copy": "Copy list",
+        "dependency_preflight_copied": "The complete preflight list is on the clipboard.",
         "warning_other": "{count} other notices are recorded in the full report",
         "full_report": "Full report: {path}",
         "result_location": "Backup location: {path}",
@@ -560,7 +586,7 @@ TEXT = {
         "plan_target": "Target",
         "plan_action": "Action",
         "plan_size": "Size",
-        "plan_disk": "Required free space: {required} · Available: {free}",
+        "plan_disk": "Required peak space incl. reserve: {required} · Available: {free}",
         "plan_blockers": "Blocking issues:\n{details}",
         "plan_decision_help": "Select a conversation or project and choose what to keep.",
         "plan_item_details": "Selected item:\n{reason}\n\nGit explanation: {git}",
@@ -671,13 +697,15 @@ def _backup_result_model(
     skipped_dependency_metadata = int(
         counts.get("skippedReconstructableDirectories", 0)
     )
+    approved_dependency_payload = int(counts.get("dependencyExclusions", 0))
     categorized = min(
         len(warnings),
         missing_attachments
         + link_warnings
         + missing_projects
         + skipped_python_cache
-        + skipped_dependency_metadata,
+        + skipped_dependency_metadata
+        + approved_dependency_payload,
     )
     valid = bool(
         validation.get("valid") if validation is not None else package.get("backupComplete")
@@ -693,6 +721,7 @@ def _backup_result_model(
             "missingProjects": missing_projects,
             "pythonCache": skipped_python_cache,
             "dependencyMetadata": skipped_dependency_metadata,
+            "dependencyPayload": approved_dependency_payload,
             "other": max(len(warnings) - categorized, 0),
         },
         "metrics": {
@@ -817,6 +846,7 @@ class BackupResultDialog(tk.Toplevel):
             ("missingProjects", "warning_missing_projects"),
             ("pythonCache", "warning_python_cache"),
             ("dependencyMetadata", "warning_dependency_metadata"),
+            ("dependencyPayload", "warning_dependency_payload"),
             ("other", "warning_other"),
         ):
             count = int(model["warnings"].get(key, 0))
@@ -1180,7 +1210,14 @@ class RestorePlanDialog(tk.Toplevel):
                 f"{disk.get('volume')}: "
                 + self.parent_app.t(
                     "plan_disk",
-                    required=_format_bytes(int(disk.get("requiredBytes", 0))),
+                    required=_format_bytes(
+                        int(
+                            disk.get(
+                                "peakRequiredBytes",
+                                disk.get("requiredBytes", 0),
+                            )
+                        )
+                    ),
                     free=_format_bytes(int(disk.get("freeBytes", 0))),
                 )
             )
@@ -1227,6 +1264,143 @@ class RestorePlanDialog(tk.Toplevel):
             self.approve_button.state(["!disabled"])
         else:
             self.approve_button.state(["disabled"])
+
+    def _approve(self) -> None:
+        self.approved = True
+        self.destroy()
+
+
+class DependencyPreflightDialog(tk.Toplevel):
+    def __init__(self, parent: "TransferApp", preflight: dict) -> None:
+        super().__init__(parent)
+        self.parent_app = parent
+        self.preflight = preflight
+        self.approved = False
+        self.exclusions = list(preflight.get("exclusions", []))
+        self.blockers = list(preflight.get("blockingIssues", []))
+        self.title(parent.t("dependency_preflight_title"))
+        self.geometry("1180x680")
+        self.minsize(900, 540)
+        self.configure(bg=parent.BG)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        blocked = bool(self.blockers)
+        intro = parent.t(
+            "dependency_preflight_blocked" if blocked else "dependency_preflight_review",
+            count=len(self.blockers) if blocked else len(self.exclusions),
+        )
+        tk.Label(
+            self,
+            text=intro,
+            bg="#FDECEC" if blocked else "#FFF5E6",
+            fg="#B42318" if blocked else "#8A5A00",
+            font=("Segoe UI", 10, "bold"),
+            wraplength=1100,
+            justify="left",
+            anchor="w",
+            padx=20,
+            pady=16,
+        ).grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 12))
+
+        frame = ttk.Frame(self, style="App.TFrame")
+        frame.grid(row=1, column=0, sticky="nsew", padx=20)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+        columns = ("action", "path", "type", "error")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", height=20)
+        tree.heading("action", text=parent.t("dependency_preflight_action"))
+        tree.heading("path", text=parent.t("dependency_preflight_path"))
+        tree.heading("type", text=parent.t("dependency_preflight_type"))
+        tree.heading("error", text=parent.t("dependency_preflight_error"))
+        tree.column("action", width=190, minwidth=160, stretch=False)
+        tree.column("path", width=560, minwidth=320)
+        tree.column("type", width=100, minwidth=80, stretch=False)
+        tree.column("error", width=260, minwidth=160)
+        for index, item in enumerate(self.exclusions):
+            tree.insert(
+                "",
+                "end",
+                iid=f"exclude-{index}",
+                values=(
+                    parent.t("dependency_preflight_exclude"),
+                    item.get("sourceRelativePath") or item.get("sourcePath"),
+                    item.get("pathType"),
+                    item.get("error"),
+                ),
+                tags=("exclude",),
+            )
+        for index, item in enumerate(self.blockers):
+            tree.insert(
+                "",
+                "end",
+                iid=f"block-{index}",
+                values=(
+                    parent.t("dependency_preflight_stop"),
+                    item.get("sourceRelativePath") or item.get("sourcePath"),
+                    item.get("pathType"),
+                    item.get("error"),
+                ),
+                tags=("blocked",),
+            )
+        tree.tag_configure("exclude", background="#FFF9ED", foreground="#694100")
+        tree.tag_configure("blocked", background="#FDECEC", foreground="#B42318")
+        tree.grid(row=0, column=0, sticky="nsew")
+        vertical = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        vertical.grid(row=0, column=1, sticky="ns")
+        horizontal = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+        horizontal.grid(row=1, column=0, sticky="ew")
+        tree.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+
+        footer = ttk.Frame(self, style="App.TFrame")
+        footer.grid(row=2, column=0, sticky="ew", padx=20, pady=20)
+        ttk.Button(
+            footer,
+            text=parent.t("dependency_preflight_copy"),
+            command=self._copy,
+            style="Secondary.TButton",
+        ).pack(side="left")
+        ttk.Button(
+            footer,
+            text=parent.t("close" if blocked else "selection_cancel"),
+            command=self.destroy,
+            style="Secondary.TButton",
+        ).pack(side="right")
+        if not blocked:
+            ttk.Button(
+                footer,
+                text=parent.t("dependency_preflight_approve"),
+                command=self._approve,
+                style="Primary.TButton",
+            ).pack(side="right", padx=(0, 10))
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.after_idle(self._present)
+
+    def _present(self) -> None:
+        self.lift()
+        self.focus_force()
+
+    def _copy(self) -> None:
+        rows = []
+        for action, items in (("EXCLUDE", self.exclusions), ("BLOCK", self.blockers)):
+            for item in items:
+                rows.append(
+                    "\t".join(
+                        (
+                            action,
+                            str(item.get("pathType") or ""),
+                            str(item.get("sourceRelativePath") or item.get("sourcePath") or ""),
+                            str(item.get("error") or ""),
+                        )
+                    )
+                )
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(rows))
+        messagebox.showinfo(
+            self.parent_app.t("dependency_preflight_title"),
+            self.parent_app.t("dependency_preflight_copied"),
+            parent=self,
+        )
 
     def _approve(self) -> None:
         self.approved = True
@@ -3253,6 +3427,18 @@ class TransferApp(tk.Tk):
         # it from the taskbar; keep the main actions inactive until it closes.
         for button in self.action_buttons:
             button.configure(state="disabled")
+        dependency_scan = preview.get("dependencyPreflight") or {}
+        dependency_exclusions = list(dependency_scan.get("exclusions", []))
+        dependency_blockers = list(dependency_scan.get("blockingIssues", []))
+        if dependency_exclusions or dependency_blockers:
+            dependency_dialog = DependencyPreflightDialog(self, dependency_scan)
+            self.wait_window(dependency_dialog)
+            if not dependency_dialog.approved:
+                for button in self.action_buttons:
+                    button.configure(
+                        state="disabled" if self.launch_blocked else "normal"
+                    )
+                return
         dialog = BackupSelectionDialog(self, preview)
         self.wait_window(dialog)
         for button in self.action_buttons:
@@ -3337,6 +3523,13 @@ class TransferApp(tk.Tk):
                     "excludedProjectPaths": dialog.excluded_paths,
                     "additionalPortablePaths": [],
                     "excludeDirectoryNames": [],
+                    "approvedDependencyExclusions": [
+                        {
+                            "sourcePath": item.get("sourcePath"),
+                            "pathType": item.get("pathType"),
+                        }
+                        for item in dependency_exclusions
+                    ],
                     "versionCheck": self.last_version_check,
                     "knownFolders": windows.known_folders(),
                 },
