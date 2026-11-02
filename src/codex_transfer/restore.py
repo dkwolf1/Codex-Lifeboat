@@ -28,7 +28,7 @@ except ImportError:
     from validate import validate
 
 
-RESTORE_VERSION = "3.4.7"
+RESTORE_VERSION = "3.4.8"
 PROTECTED_NAMES = {"auth.json", "installation_id", "cap_sid"}
 RUNTIME_NAMES = {
     ".sandbox",
@@ -44,6 +44,7 @@ RUNTIME_NAMES = {
     "thread-writer-locks",
 }
 PORTABLE_STATE_KEYS = backup.PORTABLE_STATE_KEYS
+PAGINATED_HISTORY_DATABASE_NAMES = backup.PAGINATED_HISTORY_DATABASE_NAMES
 
 
 class RestoreError(RuntimeError):
@@ -1102,6 +1103,11 @@ def _restore_portable_profile(
         return count
     for entry in source_root.iterdir():
         destination = target_codex / entry.name
+        # This database is a projection of rollout bytes. Older Lifeboat
+        # packages may contain it, but restoring it after _rewrite_copy changes
+        # paths or line endings would leave its persisted byte offsets stale.
+        if entry.name.lower() in PAGINATED_HISTORY_DATABASE_NAMES:
+            continue
         if entry.name.lower() in {value.lower() for value in PROTECTED_NAMES | RUNTIME_NAMES}:
             continue
         if destination.exists():
@@ -1131,6 +1137,17 @@ def _restore_portable_profile(
                 backup.copy_file(entry, destination)
             count += 1
     return count
+
+
+def _reset_paginated_history_projection(target_codex: Path) -> int:
+    """Remove derived paginated history so Codex rematerializes rewritten rollouts."""
+    removed = 0
+    for name in PAGINATED_HISTORY_DATABASE_NAMES:
+        path = target_codex / name
+        if path.exists() or path.is_symlink():
+            _remove_path(path)
+            removed += 1
+    return removed
 
 
 def _restore_attachments(package_root: Path, translator: PathTranslator) -> int:
@@ -1777,6 +1794,12 @@ def restore_backup(
             source = safety_codex / protected_name
             if source.is_file():
                 backup.copy_file(source, target_codex / protected_name)
+        # Remove stale offsets before installing any rewritten rollout bytes.
+        # The safety copy above retains the exact destination projection for
+        # rollback if any later restore step fails.
+        paginated_history_files_removed = _reset_paginated_history_projection(
+            target_codex
+        )
         portable_files = _restore_portable_profile(package_root, target_codex, translator)
         sessions = _restore_sessions(package_root, target_codex, translator)
         conversation_decisions = _restore_preserved_conversations(
@@ -1880,6 +1903,10 @@ def restore_backup(
                 "sessionsCopied": sessions,
                 "targetConversationsRetained": conversation_decisions["retained"],
                 "targetConversationsCloned": conversation_decisions["cloned"],
+                "paginatedHistoryProjectionReset": True,
+                "paginatedHistoryProjectionFilesRemoved": (
+                    paginated_history_files_removed
+                ),
                 "recentIndexEntries": recent_index_entries,
                 "attachmentsCopied": attachments,
                 "projectIdentitiesRegistered": identities_registered,

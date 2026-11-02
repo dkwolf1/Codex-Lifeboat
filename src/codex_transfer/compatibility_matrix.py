@@ -48,7 +48,11 @@ AUTOMATED_SCENARIOS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "conversation-variants",
         "Recent, projectless, pinned and archived conversations",
-        ("completePhase3Inventory", "conversationMirrorExact"),
+        (
+            "completePhase3Inventory",
+            "conversationMirrorExact",
+            "paginatedHistoryProjectionOffsetsReset",
+        ),
     ),
     (
         "independent-edits",

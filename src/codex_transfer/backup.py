@@ -28,7 +28,7 @@ from . import atomic_io, lineage, path_model, project_identity, rollout as rollo
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.7"
+GENERATOR_VERSION = "3.4.8"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -49,7 +49,17 @@ BLOCKED_CODEX_NAMES = {
     "cap_sid",
     "state_5.sqlite-wal",
     "state_5.sqlite-shm",
+    "thread_history_1.sqlite",
+    "thread_history_1.sqlite-wal",
+    "thread_history_1.sqlite-shm",
 }
+PAGINATED_HISTORY_DATABASE_NAMES = frozenset(
+    {
+        "thread_history_1.sqlite",
+        "thread_history_1.sqlite-wal",
+        "thread_history_1.sqlite-shm",
+    }
+)
 BLOCKED_CODEX_DIRS = {
     ".sandbox",
     ".sandbox-bin",

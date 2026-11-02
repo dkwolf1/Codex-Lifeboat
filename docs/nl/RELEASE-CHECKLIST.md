@@ -2,16 +2,16 @@
 
 [English](../RELEASE-CHECKLIST.md)
 
-Deze checklist publiceert Codex Lifeboat 3.4.7 als **stabiele release**. De
+Deze checklist publiceert Codex Lifeboat 3.4.8 als **stabiele release**. De
 tag-workflow bouwt en controleert nieuwe releasebestanden, maakt de
 checksums en herkomstverklaringen en publiceert de GitHub-release.
 
 ## Vóór het pushen
 
-- Controleer dat `git status --short` alleen bedoelde 3.4.7-wijzigingen bevat.
+- Controleer dat `git status --short` alleen bedoelde 3.4.8-wijzigingen bevat.
 - Stage geen echte back-up, database, token, `.env`, EXE, ZIP of bouwmap.
 - De lokale map `dist` hoort niet in Git en wordt bewust genegeerd.
-- Maak tag `v3.4.7` pas nadat de CI-run van `main` groen is.
+- Maak tag `v3.4.8` pas nadat de CI-run van `main` groen is.
 
 ## Publiceren met PowerShell
 
@@ -21,7 +21,7 @@ Voer in de repositorymap uit:
 git add -A
 git status --short
 git diff --cached --check
-git commit -m "Fix compressed rollout duplicate resolution"
+git commit -m "Reset paginated history projection after restore"
 git push origin main
 ```
 
@@ -29,15 +29,15 @@ Wacht tot de `main`-CI groen is op
 <https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml>. Voer dan uit:
 
 ```powershell
-git tag -a v3.4.7 -m "Codex Lifeboat 3.4.7 stable release"
-git push origin v3.4.7
+git tag -a v3.4.8 -m "Codex Lifeboat 3.4.8 stable release"
+git push origin v3.4.8
 ```
 
 De tag start `.github/workflows/release.yml`. Maak niet daarnaast handmatig een
 release met dezelfde tag: de workflow maakt deze als stabiele nieuwste release.
 Volg de uitvoering op
 <https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/release.yml> en open
-daarna <https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.7>.
+daarna <https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.8>.
 
 ## Gepubliceerde release controleren
 

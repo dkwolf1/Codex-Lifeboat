@@ -4,15 +4,16 @@
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Stabiele release:** versie 3.4.7 doorliep de geautomatiseerde bron-, EXE- en
-> ZIP-tests en een echte Windows 11-route van pc A naar pc B en terug naar pc A.
-> Back-up, onafhankelijke back-upcontrole, herstel, herstelcontrole en verder
-> werken in Codex slaagden. Bewaar onvervangbare gegevens ook apart en lees de
-> [testhandleiding](TESTHANDLEIDING.md).
+> **Stabiele release:** versie 3.4.8 voorkomt verouderde byteposities voor
+> gepagineerde geschiedenis nadat herschreven rollouts zijn hersteld. Alle 88
+> broncontroles en 12 geautomatiseerde compatibiliteitsscenario's slagen. Voor de
+> migratiewerkwijze bestaat bovendien eerder fysiek bewijs van een Windows 11-
+> route van pc A naar pc B en terug. Bewaar onvervangbare gegevens ook apart en
+> lees de [testhandleiding](TESTHANDLEIDING.md).
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.7](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.7)
+### [Download Codex Lifeboat 3.4.8](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.8)
 
 Download op de releasepagina uitsluitend dit bestand:
 

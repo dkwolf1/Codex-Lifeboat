@@ -2,8 +2,15 @@
 
 ## Unreleased
 
+## 3.4.8 - 2026-11-02
+
 - Added a Ruff lint job in CI and fixed the existing issues it identified,
   including an undefined name in additional portable-path backups.
+- Exclude Codex's derived `thread_history_1.sqlite` paginated-history projection
+  from new backups, ignore it in older packages, and reset the destination
+  projection before installing rewritten rollouts so persisted byte offsets
+  cannot point into rewritten path or line-ending bytes. Recovery points retain
+  the original destination projection for exact automatic rollback.
 
 ## 3.4.7 - 2026-10-27
 

@@ -3,23 +3,23 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Stable: 3.4.7](https://img.shields.io/badge/stable-v3.4.7-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.7)
+[![Stable: 3.4.8](https://img.shields.io/badge/stable-v3.4.8-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.8)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Stable release:** version 3.4.7 completed the automated source, executable,
-> and extracted-ZIP suites plus a real Windows 11 PC A → PC B → PC A round trip.
-> Backup, independent backup verification, restore, post-restore verification,
-> and continued use in Codex all succeeded. Keep an independent copy of
+> **Stable release:** version 3.4.8 prevents stale paginated-history byte offsets
+> after rewritten rollouts are restored. It passes all 88 source checks and 12
+> automated compatibility scenarios. The migration workflow also has prior
+> physical Windows 11 PC A → PC B → PC A evidence. Keep an independent copy of
 > irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
 
 https://mechscript.nl/en/codex-lifeboat-backup-restore-migrate-en/
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.7 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.7)
+### [Download Codex Lifeboat 3.4.8 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.8)
 
 On the release page, download only:
 

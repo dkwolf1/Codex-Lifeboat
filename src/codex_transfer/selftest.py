@@ -700,6 +700,10 @@ def _write_target(profile: Path, marker: str) -> tuple[Path, Path]:
     )
     database.commit()
     database.close()
+    for index, name in enumerate(sorted(backup.PAGINATED_HISTORY_DATABASE_NAMES)):
+        (codex / name).write_bytes(
+            f"target-history-projection-{marker}-{index}".encode("ascii")
+        )
     return codex, project
 
 
@@ -1467,6 +1471,86 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
         and (target_codex / "skills" / "demo" / "SKILL.md").is_file()
         and restored == 2
         and not warnings
+    )
+
+
+def _paginated_history_projection_policy_test(root: Path) -> bool:
+    fixture = root / "paginated-history-projection-policy"
+    source_codex = fixture / "source-user" / ".codex"
+    package_root = fixture / "package"
+    target_profile = fixture / "target-user"
+    target_codex = target_profile / ".codex"
+    safety_root = fixture / "safety"
+    safety_codex = safety_root / "codex-before-restore"
+    source_codex.mkdir(parents=True)
+    target_codex.mkdir(parents=True)
+    (source_codex / "config.toml").write_text("source = true\n", encoding="utf-8")
+    (target_codex / "config.toml").write_text("target = true\n", encoding="utf-8")
+
+    source_bytes: dict[str, bytes] = {}
+    target_bytes: dict[str, bytes] = {}
+    for index, name in enumerate(sorted(backup.PAGINATED_HISTORY_DATABASE_NAMES)):
+        source_bytes[name] = f"source-projection-{index}".encode("ascii")
+        target_bytes[name] = f"target-projection-{index}".encode("ascii")
+        (source_codex / name).write_bytes(source_bytes[name])
+        (target_codex / name).write_bytes(target_bytes[name])
+
+    stats_files, _stats_bytes, stats_details = backup._portable_profile_stats(
+        source_codex
+    )
+    records = backup.copy_portable_codex_profile(source_codex, package_root, [])
+    portable_root = package_root / "codex" / "portable-profile"
+    for name, value in source_bytes.items():
+        # Simulate a package created by 3.4.7, which included this projection.
+        (portable_root / name).write_bytes(value)
+
+    restore._copy_codex_safety(target_codex, safety_codex)
+
+    class IdentityTranslator:
+        @staticmethod
+        def text(value: str) -> str:
+            return value
+
+    restored = restore._restore_portable_profile(
+        package_root, target_codex, IdentityTranslator()
+    )
+    legacy_projection_ignored = all(
+        (target_codex / name).read_bytes() == target_bytes[name]
+        for name in target_bytes
+    )
+    removed = restore._reset_paginated_history_projection(target_codex)
+    projection_reset = all(
+        not (target_codex / name).exists() for name in target_bytes
+    )
+
+    backup.write_json(
+        safety_root / "restore-journal.json",
+        {
+            "status": "restoring",
+            "targetProfile": str(target_profile),
+            "safetyRoot": str(safety_root),
+            "approvedExternalRoots": [],
+            "projects": [],
+        },
+    )
+    restore.rollback_restore(safety_root, target_profile)
+    rollback_exact = all(
+        (target_codex / name).read_bytes() == target_bytes[name]
+        for name in target_bytes
+    )
+    record_names = {str(item.get("name", "")).lower() for item in records}
+    detail_names = {str(item.get("name", "")).lower() for item in stats_details}
+    return bool(
+        stats_files == 1
+        and record_names == {"config.toml"}
+        and detail_names == {"config.toml"}
+        and restored == 1
+        and legacy_projection_ignored
+        and removed == len(target_bytes)
+        and projection_reset
+        and rollback_exact
+        and (target_codex / "config.toml").read_text(encoding="utf-8")
+        == "target = true\n"
     )
 
 
@@ -2692,6 +2776,9 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     )
     path_budget_preflight = _path_budget_test(root)
     destination_prompt = _destination_prompt_test()
+    paginated_history_projection_safe = (
+        _paginated_history_projection_policy_test(root)
+    )
     reconstructable_cache_warning, mandatory_copy_failure = (
         _reconstructable_cache_policy_test(root, source_profile)
     )
@@ -3654,11 +3741,33 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
             == backup.sha256_file(staged_executable)
         )
     auth_hash_before = backup.sha256_file(target_profile / ".codex" / "auth.json")
+    target_history_projection_before = {
+        name: (target_profile / ".codex" / name).read_bytes()
+        for name in backup.PAGINATED_HISTORY_DATABASE_NAMES
+    }
     prepared = restore.prepare_restore(
         package, target_profile, allow_running_test=True
     )
     restored = restore.restore_backup(
         package, target_profile, Path(prepared["safetyRoot"])
+    )
+    paginated_history_reset_complete = bool(
+        restored.get("paginatedHistoryProjectionReset") is True
+        and restored.get("paginatedHistoryProjectionFilesRemoved")
+        == len(backup.PAGINATED_HISTORY_DATABASE_NAMES)
+        and all(
+            not (target_profile / ".codex" / name).exists()
+            for name in backup.PAGINATED_HISTORY_DATABASE_NAMES
+        )
+        and all(
+            (
+                Path(prepared["safetyRoot"])
+                / "codex-before-restore"
+                / name
+            ).read_bytes()
+            == target_history_projection_before[name]
+            for name in backup.PAGINATED_HISTORY_DATABASE_NAMES
+        )
     )
     managed_recovery_location = bool(
         Path(prepared["safetyRoot"]).parent.resolve(strict=False)
@@ -4108,6 +4217,10 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
             path_budget_preflight and package_path_budget_complete
         ),
         "singleUsbStillPromptsForDestination": destination_prompt,
+        "paginatedHistoryProjectionOffsetsReset": (
+            paginated_history_projection_safe
+            and paginated_history_reset_complete
+        ),
         "unreadablePythonCacheWarnsAndContinues": reconstructable_cache_warning,
         "unreadableNormalFileStillFailsClosed": mandatory_copy_failure,
         "identicalDuplicateRolloutResolved": identical_rollout_resolved,
