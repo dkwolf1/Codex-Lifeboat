@@ -52,6 +52,8 @@ AUTOMATED_SCENARIOS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
             "completePhase3Inventory",
             "conversationMirrorExact",
             "paginatedHistoryProjectionOffsetsReset",
+            "inaccessibleDependencyMetadataReported",
+            "otherUnreadableDirectoriesFailClosed",
         ),
     ),
     (

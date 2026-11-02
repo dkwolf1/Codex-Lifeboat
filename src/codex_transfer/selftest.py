@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -1420,6 +1421,8 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
         exclude_fragments: list[str],
         warnings: list[str],
         skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
+        skipped_reconstructable_directories: list[dict[str, Any]] | None = None,
+        allow_dependency_metadata_skip: bool = False,
     ) -> tuple[int, int]:
         if source.name.lower() == "plugins":
             raise PermissionError(87, "plugin runtime must not be opened", str(source))
@@ -1429,6 +1432,8 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
             exclude_fragments,
             warnings,
             skipped_reconstructable_cache,
+            skipped_reconstructable_directories,
+            allow_dependency_metadata_skip,
         )
 
     warnings: list[str] = []
@@ -2477,6 +2482,237 @@ def _reconstructable_cache_policy_test(
     return cache_warning_complete, mandatory_stays_strict
 
 
+def _dependency_metadata_directory_policy_test(root: Path) -> tuple[bool, bool]:
+    profile = root / "dependency-metadata-user"
+    codex, project = _write_source(profile)
+    chatgpt_projects = codex / ".chatgpt-projects"
+    blocked = (
+        chatgpt_projects
+        / "work"
+        / "_deps"
+        / "pillow-12.3.0.dist-info"
+    )
+    blocked.mkdir(parents=True)
+    (blocked / "METADATA").write_text(
+        "Name: Pillow\nVersion: 12.3.0\n", encoding="utf-8"
+    )
+    portable_marker = chatgpt_projects / "work" / "project-registration.json"
+    portable_marker.write_text('{"portable":true}\n', encoding="utf-8")
+    source_before = _hash_tree(profile)
+    destination = root / "dependency-metadata-usb"
+    config = root / "dependency-metadata-config.json"
+    backup.write_json(
+        config,
+        {
+            "configVersion": 1,
+            "destinationRoot": str(destination),
+            "includeAttachments": True,
+            "projects": [{"path": str(project), "required": True}],
+            "additionalPortablePaths": [],
+            "excludeDirectoryNames": [],
+            "projectRegistryPath": str(
+                root / "dependency-metadata-state" / "project-registry.json"
+            ),
+            "lineageStatePath": str(
+                root / "dependency-metadata-state" / "lineage-state.json"
+            ),
+            "deviceStatePath": str(
+                root / "dependency-metadata-state" / "device.json"
+            ),
+        },
+    )
+    original_scandir = backup.os.scandir
+    blocked_key = backup.normalized_source_key(blocked)
+    blocked_error = PermissionError(13, "Access is denied", str(blocked))
+    blocked_error.winerror = 5
+
+    def deny_blocked_directory(path: str | os.PathLike[str]):
+        candidate = Path(path)
+        if backup.normalized_source_key(candidate) == blocked_key:
+            raise blocked_error
+        return original_scandir(path)
+
+    with mock.patch.object(backup.os, "scandir", side_effect=deny_blocked_directory):
+        package = backup.build_backup(
+            argparse.Namespace(
+                config=str(config),
+                destination=str(destination),
+                source_profile=str(profile),
+                source_codex_home=str(codex),
+                allow_running_test=True,
+            )
+        )
+
+    directory_report_path = (
+        package / "reports" / "skipped-reconstructable-directories.json"
+    )
+    directory_report = backup.read_json(directory_report_path)
+    package_manifest = backup.read_json(package / "manifest" / "package.json")
+    backup_report = backup.read_json(package / "reports" / "backup-report.json")
+    validation = validate(package, False)
+    from .gui import _backup_result_model
+
+    result_model = _backup_result_model(package, validation)
+    report_item = (directory_report.get("items") or [{}])[0]
+    blocked_relative = (
+        "codex/portable-profile/.chatgpt-projects/"
+        "work/_deps/pillow-12.3.0.dist-info"
+    )
+    copied_marker = (
+        package
+        / "codex"
+        / "portable-profile"
+        / ".chatgpt-projects"
+        / "work"
+        / "project-registration.json"
+    )
+
+    target_profile = root / "dependency-metadata-target"
+    _write_target(target_profile, "DEPENDENCY-METADATA")
+    prepared = restore.prepare_restore(
+        package, target_profile, allow_running_test=True
+    )
+    restored = restore.restore_backup(
+        package, target_profile, Path(prepared["safetyRoot"])
+    )
+    restored_marker = (
+        target_profile
+        / ".codex"
+        / ".chatgpt-projects"
+        / "work"
+        / "project-registration.json"
+    )
+    restored_blocked = (
+        target_profile
+        / ".codex"
+        / ".chatgpt-projects"
+        / "work"
+        / "_deps"
+        / "pillow-12.3.0.dist-info"
+    )
+    supported_case = bool(
+        validation.get("valid")
+        and directory_report.get("count") == 1
+        and report_item.get("sourcePath") == str(blocked)
+        and report_item.get("backupRelativePath") == blocked_relative
+        and report_item.get("errorType") == "PermissionError"
+        and report_item.get("kind") == "python-distribution-metadata"
+        and report_item.get("pathType") == "directory"
+        and report_item.get("contentsEnumerated") is False
+        and report_item.get("fileCount") is None
+        and package_manifest.get("counts", {}).get(
+            "skippedReconstructableDirectories"
+        )
+        == 1
+        and package_manifest.get("skippedReconstructableDirectories", {}).get(
+            "reportRelativePath"
+        )
+        == "reports/skipped-reconstructable-directories.json"
+        and backup_report.get("skippedReconstructableDirectories", {}).get(
+            "count"
+        )
+        == 1
+        and result_model.get("valid") is True
+        and result_model.get("warnings", {}).get("dependencyMetadata") == 1
+        and copied_marker.is_file()
+        and not (package / Path(*Path(blocked_relative).parts)).exists()
+        and restored.get("status") == "complete"
+        and restore.verify_restored(package, target_profile).get("valid")
+        and restored_marker.is_file()
+        and not restored_blocked.exists()
+        and source_before == _hash_tree(profile)
+    )
+
+    strict_root = root / "dependency-metadata-strict"
+    sharing_violation = PermissionError(13, "Sharing violation")
+    sharing_violation.winerror = 32
+
+    def strict_case(
+        label: str,
+        relative: Path,
+        error: OSError,
+        allow_skip: bool,
+    ) -> bool:
+        source = strict_root / label / ".chatgpt-projects"
+        blocked_path = source / relative
+        blocked_path.mkdir(parents=True)
+        destination_path = strict_root / label / "destination"
+        denied_key = backup.normalized_source_key(blocked_path)
+
+        def deny_case(path: str | os.PathLike[str]):
+            candidate = Path(path)
+            if backup.normalized_source_key(candidate) == denied_key:
+                raise error
+            return original_scandir(path)
+
+        records: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        failure: Exception | None = None
+        with mock.patch.object(backup.os, "scandir", side_effect=deny_case):
+            try:
+                backup.copy_tree(
+                    source,
+                    destination_path,
+                    [],
+                    warnings,
+                    [],
+                    records,
+                    allow_skip,
+                )
+            except Exception as exc:
+                failure = exc
+        return bool(
+            isinstance(failure, backup.BackupError)
+            and not records
+            and not warnings
+        )
+
+    strict_cases = bool(
+        strict_case(
+            "outside-deps",
+            Path("work") / "not-deps" / "pillow-12.3.0.dist-info",
+            PermissionError(13, "Access is denied"),
+            True,
+        )
+        and strict_case(
+            "non-metadata",
+            Path("work") / "_deps" / "important-project-data",
+            PermissionError(13, "Access is denied"),
+            True,
+        )
+        and strict_case(
+            "wrong-error",
+            Path("work") / "_deps" / "pillow-12.3.0.dist-info",
+            OSError(123, "Not an access-denied error"),
+            True,
+        )
+        and strict_case(
+            "sharing-violation",
+            Path("work") / "_deps" / "pillow-12.3.0.dist-info",
+            sharing_violation,
+            True,
+        )
+        and strict_case(
+            "not-opted-in",
+            Path("work") / "_deps" / "pillow-12.3.0.dist-info",
+            PermissionError(13, "Access is denied"),
+            False,
+        )
+        and not backup.record_skipped_reconstructable_directory(
+            blocked,
+            strict_root / "unreported-destination",
+            chatgpt_projects,
+            blocked_error,
+            [],
+            None,
+        )
+    )
+
+    directory_report_path.unlink()
+    missing_report_rejected = not validate(package, False).get("valid")
+    return bool(supported_case and missing_report_rejected), strict_cases
+
+
 def _rollout_resolution_test(
     root: Path, source_profile: Path
 ) -> tuple[bool, bool]:
@@ -2781,6 +3017,9 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
     )
     reconstructable_cache_warning, mandatory_copy_failure = (
         _reconstructable_cache_policy_test(root, source_profile)
+    )
+    dependency_metadata_warning, dependency_metadata_strict = (
+        _dependency_metadata_directory_policy_test(root)
     )
     identical_rollout_resolved, different_rollout_resolved = (
         _rollout_resolution_test(root, source_profile)
@@ -4223,6 +4462,8 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         ),
         "unreadablePythonCacheWarnsAndContinues": reconstructable_cache_warning,
         "unreadableNormalFileStillFailsClosed": mandatory_copy_failure,
+        "inaccessibleDependencyMetadataReported": dependency_metadata_warning,
+        "otherUnreadableDirectoriesFailClosed": dependency_metadata_strict,
         "identicalDuplicateRolloutResolved": identical_rollout_resolved,
         "differentDuplicateRolloutResolved": different_rollout_resolved,
         "compressedDatabaseRolloutPathResolved": compressed_database_rollout_resolved,

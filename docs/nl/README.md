@@ -4,16 +4,17 @@
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Stabiele release:** versie 3.4.8 voorkomt verouderde byteposities voor
-> gepagineerde geschiedenis nadat herschreven rollouts zijn hersteld. Alle 88
-> broncontroles en 12 geautomatiseerde compatibiliteitsscenario's slagen. Voor de
+> **Stabiele release:** versie 3.4.9 rapporteert en negeert uitsluitend
+> ontoegankelijke, reconstrueerbare Python-distributiemetadata onder Codex-
+> dependencyroots. Alle 90 broncontroles en 12 geautomatiseerde
+> compatibiliteitsscenario's slagen. Voor de
 > migratiewerkwijze bestaat bovendien eerder fysiek bewijs van een Windows 11-
 > route van pc A naar pc B en terug. Bewaar onvervangbare gegevens ook apart en
 > lees de [testhandleiding](TESTHANDLEIDING.md).
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.8](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.8)
+### [Download Codex Lifeboat 3.4.9](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.9)
 
 Download op de releasepagina uitsluitend dit bestand:
 

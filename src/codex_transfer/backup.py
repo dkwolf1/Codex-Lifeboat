@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import errno
 import hashlib
 import json
 import os
@@ -28,7 +29,7 @@ from . import atomic_io, lineage, path_model, project_identity, rollout as rollo
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.8"
+GENERATOR_VERSION = "3.4.9"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -630,12 +631,77 @@ def record_skipped_reconstructable_cache(
     return True
 
 
+def is_reconstructable_dependency_metadata_directory(
+    path: Path, traversal_root: Path
+) -> bool:
+    """Match only installed-distribution metadata directly below a _deps root."""
+    try:
+        relative = path.relative_to(traversal_root)
+    except ValueError:
+        return False
+    name = path.name.casefold()
+    stem = name[: -len(".dist-info")] if name.endswith(".dist-info") else ""
+    distribution, separator, version = stem.rpartition("-")
+    return bool(
+        len(relative.parts) >= 2
+        and relative.parts[-2].casefold() == "_deps"
+        and distribution
+        and separator
+        and version
+        and version[0].isdigit()
+    )
+
+
+def is_access_denied_error(error: OSError) -> bool:
+    winerror = getattr(error, "winerror", None)
+    if winerror is not None:
+        return winerror == 5
+    return bool(
+        isinstance(error, PermissionError)
+        and getattr(error, "errno", None) in {errno.EACCES, errno.EPERM}
+    )
+
+
+def record_skipped_reconstructable_directory(
+    source: Path,
+    destination: Path,
+    traversal_root: Path,
+    error: OSError,
+    warnings: list[str],
+    records: list[dict[str, Any]] | None,
+) -> bool:
+    """Record one narrowly classified unreadable dependency-metadata directory."""
+    if records is None or not (
+        is_access_denied_error(error)
+        and is_reconstructable_dependency_metadata_directory(source, traversal_root)
+    ):
+        return False
+    record = {
+        "sourcePath": str(source),
+        "destinationPath": str(destination),
+        "errorType": type(error).__name__,
+        "error": str(error),
+        "kind": "python-distribution-metadata",
+        "pathType": "directory",
+        "contentsEnumerated": False,
+        "fileCount": None,
+    }
+    records.append(record)
+    warnings.append(
+        "Skipped inaccessible reconstructable Python distribution metadata directory; "
+        f"contents could not be enumerated: {source}: {type(error).__name__}: {error}"
+    )
+    return True
+
+
 def copy_tree(
     source: Path,
     destination: Path,
     exclude_fragments: Iterable[str],
     warnings: list[str],
     skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
+    skipped_reconstructable_directories: list[dict[str, Any]] | None = None,
+    allow_dependency_metadata_skip: bool = False,
 ) -> tuple[int, int]:
     count = 0
     byte_count = 0
@@ -647,6 +713,22 @@ def copy_tree(
         try:
             entries = list(os.scandir(current_source))
         except OSError as exc:
+            if allow_dependency_metadata_skip and record_skipped_reconstructable_directory(
+                current_source,
+                current_destination,
+                source,
+                exc,
+                warnings,
+                skipped_reconstructable_directories,
+            ):
+                try:
+                    current_destination.rmdir()
+                except OSError as cleanup_error:
+                    raise BackupError(
+                        "Cannot remove the empty destination for skipped directory "
+                        f"{current_destination}: {cleanup_error}"
+                    ) from cleanup_error
+                continue
             raise BackupError(f"Cannot read directory: {current_source}: {exc}") from exc
         for entry in entries:
             entry_source = Path(entry.path)
@@ -1631,6 +1713,7 @@ def copy_portable_codex_profile(
     package_root: Path,
     warnings: list[str],
     skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
+    skipped_reconstructable_directories: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Copy all user data not classified as identity/runtime/live database state."""
     records: list[dict[str, Any]] = []
@@ -1662,6 +1745,8 @@ def copy_portable_codex_profile(
                 [],
                 warnings,
                 skipped_reconstructable_cache,
+                skipped_reconstructable_directories,
+                allow_dependency_metadata_skip=(lowered == ".chatgpt-projects"),
             )
         elif entry.is_file():
             destination = package_root / relative
@@ -2610,6 +2695,7 @@ def build_backup(args: argparse.Namespace) -> Path:
     error_path = building / "reports" / "backup-error.txt"
     warnings: list[str] = []
     skipped_reconstructable_cache: list[dict[str, Any]] = []
+    skipped_reconstructable_directories: list[dict[str, Any]] = []
     lineage_manifest: dict[str, Any] | None = None
     current_phase = "snapshot"
 
@@ -2911,6 +2997,7 @@ def build_backup(args: argparse.Namespace) -> Path:
             building,
             warnings,
             skipped_reconstructable_cache,
+            skipped_reconstructable_directories,
         )
 
         if index_source.is_file():
@@ -2973,6 +3060,39 @@ def build_backup(args: argparse.Namespace) -> Path:
                     "createdAtUtc": utc_now(),
                     "count": len(skipped_cache_items),
                     "items": skipped_cache_items,
+                },
+            )
+
+        skipped_directory_report_path = (
+            building / "reports" / "skipped-reconstructable-directories.json"
+        )
+        if skipped_reconstructable_directories:
+            skipped_directory_items: list[dict[str, Any]] = []
+            for item in skipped_reconstructable_directories:
+                destination = Path(str(item.get("destinationPath", "")))
+                try:
+                    backup_relative = portable_relative(destination, building)
+                except ValueError:
+                    backup_relative = None
+                skipped_directory_items.append(
+                    {
+                        "sourcePath": item.get("sourcePath"),
+                        "backupRelativePath": backup_relative,
+                        "errorType": item.get("errorType"),
+                        "error": item.get("error"),
+                        "kind": item.get("kind"),
+                        "pathType": item.get("pathType"),
+                        "contentsEnumerated": item.get("contentsEnumerated"),
+                        "fileCount": item.get("fileCount"),
+                    }
+                )
+            write_json(
+                skipped_directory_report_path,
+                {
+                    "reportVersion": 1,
+                    "createdAtUtc": utc_now(),
+                    "count": len(skipped_directory_items),
+                    "items": skipped_directory_items,
                 },
             )
 
@@ -3148,6 +3268,14 @@ def build_backup(args: argparse.Namespace) -> Path:
                     else None
                 ),
             },
+            "skippedReconstructableDirectories": {
+                "count": len(skipped_reconstructable_directories),
+                "reportRelativePath": (
+                    "reports/skipped-reconstructable-directories.json"
+                    if skipped_reconstructable_directories
+                    else None
+                ),
+            },
             "selection": {
                 "includedProjectPaths": [str(item["sourcePath"]) for item in candidates],
                 "excludedProjectPaths": [
@@ -3273,6 +3401,14 @@ def build_backup(args: argparse.Namespace) -> Path:
                 ),
                 "count": len(skipped_reconstructable_cache),
             },
+            "skippedReconstructableDirectories": {
+                "reportRelativePath": (
+                    "reports/skipped-reconstructable-directories.json"
+                    if skipped_reconstructable_directories
+                    else None
+                ),
+                "count": len(skipped_reconstructable_directories),
+            },
             "lineage": {
                 "manifestRelativePath": "manifest/lineage.json",
                 "lineageVersion": lineage.LINEAGE_VERSION,
@@ -3298,6 +3434,9 @@ def build_backup(args: argparse.Namespace) -> Path:
                 "warnings": len(warnings),
                 "skippedReconstructablePythonCache": len(
                     skipped_reconstructable_cache
+                ),
+                "skippedReconstructableDirectories": len(
+                    skipped_reconstructable_directories
                 ),
                 "hashedFiles": hashed_count,
             },

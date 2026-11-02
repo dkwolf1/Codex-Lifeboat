@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 3.4.9 - 2026-11-02
+
+- Allow only access-denied directory enumeration for versioned `*.dist-info`
+  metadata directly below `.chatgpt-projects/**/_deps` to continue as a valid
+  backup with warnings. Every skipped directory is recorded in a dedicated,
+  hash-protected report with `contentsEnumerated: false`; every nearby or
+  unclassified unreadable directory remains fatal.
+- Preserve conversation rollouts, project registrations and all readable files
+  around the skipped dependency metadata, with end-to-end restore coverage.
+
 ## 3.4.8 - 2026-11-02
 
 - Added a Ruff lint job in CI and fixed the existing issues it identified,

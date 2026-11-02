@@ -161,6 +161,7 @@ TEXT = {
         "warning_links": "{count} links of reparsepunten zijn veilig overgeslagen",
         "warning_missing_projects": "{count} geregistreerde projectlocaties bestaan niet meer",
         "warning_python_cache": "{count} reconstrueerbare Python-cachebestanden konden niet worden gekopieerd en zijn veilig overgeslagen",
+        "warning_dependency_metadata": "{count} ontoegankelijke, reconstrueerbare Python-dependencymappen zijn overgeslagen en op mapniveau gerapporteerd",
         "warning_other": "{count} overige aandachtspunten staan in het volledige rapport",
         "full_report": "Volledig rapport: {path}",
         "result_location": "Back-uplocatie: {path}",
@@ -429,6 +430,7 @@ TEXT = {
         "warning_links": "{count} links or reparse points were safely skipped",
         "warning_missing_projects": "{count} registered project locations no longer exist",
         "warning_python_cache": "{count} reconstructable Python cache files could not be copied and were safely skipped",
+        "warning_dependency_metadata": "{count} inaccessible reconstructable Python dependency metadata directories were skipped with directory-level reports",
         "warning_other": "{count} other notices are recorded in the full report",
         "full_report": "Full report: {path}",
         "result_location": "Backup location: {path}",
@@ -666,9 +668,16 @@ def _backup_result_model(
     skipped_python_cache = int(
         counts.get("skippedReconstructablePythonCache", 0)
     )
+    skipped_dependency_metadata = int(
+        counts.get("skippedReconstructableDirectories", 0)
+    )
     categorized = min(
         len(warnings),
-        missing_attachments + link_warnings + missing_projects + skipped_python_cache,
+        missing_attachments
+        + link_warnings
+        + missing_projects
+        + skipped_python_cache
+        + skipped_dependency_metadata,
     )
     valid = bool(
         validation.get("valid") if validation is not None else package.get("backupComplete")
@@ -683,6 +692,7 @@ def _backup_result_model(
             "links": link_warnings,
             "missingProjects": missing_projects,
             "pythonCache": skipped_python_cache,
+            "dependencyMetadata": skipped_dependency_metadata,
             "other": max(len(warnings) - categorized, 0),
         },
         "metrics": {
@@ -806,6 +816,7 @@ class BackupResultDialog(tk.Toplevel):
             ("links", "warning_links"),
             ("missingProjects", "warning_missing_projects"),
             ("pythonCache", "warning_python_cache"),
+            ("dependencyMetadata", "warning_dependency_metadata"),
             ("other", "warning_other"),
         ):
             count = int(model["warnings"].get(key, 0))

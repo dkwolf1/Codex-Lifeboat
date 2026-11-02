@@ -353,6 +353,114 @@ def validate(
         errors.append("Skipped Python-cache report exists without a declared skipped file.")
     checks["skippedReconstructablePythonCache"] = declared_cache_skips
 
+    directory_meta = (
+        package.get("skippedReconstructableDirectories", {})
+        if isinstance(package.get("skippedReconstructableDirectories"), dict)
+        else {}
+    )
+    declared_directory_skips = counts.get("skippedReconstructableDirectories", 0)
+    if directory_meta.get("count", 0) != declared_directory_skips:
+        errors.append(
+            "Skipped reconstructable-directory count differs between package metadata and counts."
+        )
+    directory_report_relative = directory_meta.get("reportRelativePath")
+    directory_report_path = (
+        package_root
+        / Path(*PurePosixPath(str(directory_report_relative)).parts)
+        if directory_report_relative
+        else None
+    )
+    if declared_directory_skips:
+        if (
+            not isinstance(declared_directory_skips, int)
+            or declared_directory_skips < 0
+        ):
+            errors.append("Invalid skipped reconstructable-directory count.")
+        elif not directory_report_relative or not valid_relative_path(
+            str(directory_report_relative)
+        ):
+            errors.append(
+                "Skipped reconstructable-directory report path is missing or invalid."
+            )
+        elif not directory_report_path or not directory_report_path.is_file():
+            errors.append("Skipped reconstructable-directory report is missing.")
+        else:
+            try:
+                directory_report = read_json(directory_report_path)
+                directory_items = directory_report.get("items", [])
+                if (
+                    directory_report.get("count") != declared_directory_skips
+                    or not isinstance(directory_items, list)
+                    or len(directory_items) != declared_directory_skips
+                ):
+                    errors.append(
+                        "Skipped reconstructable-directory report count is inconsistent."
+                    )
+                else:
+                    for item in directory_items:
+                        backup_relative = str(
+                            item.get("backupRelativePath") or ""
+                        )
+                        relative = PurePosixPath(backup_relative)
+                        parts = tuple(part.casefold() for part in relative.parts)
+                        leaf = parts[-1] if parts else ""
+                        stem = (
+                            leaf[: -len(".dist-info")]
+                            if leaf.endswith(".dist-info")
+                            else ""
+                        )
+                        distribution, separator, version = stem.rpartition("-")
+                        expected_path = bool(
+                            len(parts) >= 5
+                            and parts[:3]
+                            == ("codex", "portable-profile", ".chatgpt-projects")
+                            and parts[-2] == "_deps"
+                            and distribution
+                            and separator
+                            and version
+                            and version[0].isdigit()
+                        )
+                        if not item.get("sourcePath") or not item.get("error"):
+                            errors.append(
+                                "Skipped reconstructable-directory report item lacks source or error details."
+                            )
+                        if (
+                            item.get("kind") != "python-distribution-metadata"
+                            or item.get("pathType") != "directory"
+                            or item.get("contentsEnumerated") is not False
+                            or item.get("fileCount") is not None
+                        ):
+                            errors.append(
+                                "Skipped reconstructable-directory report item has an invalid classification."
+                            )
+                        if not valid_relative_path(backup_relative) or not expected_path:
+                            errors.append(
+                                "Skipped reconstructable-directory report contains an invalid backup path."
+                            )
+                        elif (
+                            package_root
+                            / Path(*PurePosixPath(backup_relative).parts)
+                        ).exists():
+                            errors.append(
+                                "Skipped reconstructable-directory payload unexpectedly exists: "
+                                f"{backup_relative}"
+                            )
+                if str(directory_report_relative) not in hash_rows:
+                    errors.append(
+                        "Skipped reconstructable-directory report is not hash-protected."
+                    )
+            except Exception as exc:
+                errors.append(
+                    f"Skipped reconstructable-directory report is invalid: {exc}"
+                )
+    elif directory_report_relative or (
+        package_root / "reports" / "skipped-reconstructable-directories.json"
+    ).exists():
+        errors.append(
+            "Skipped reconstructable-directory report exists without a declared skipped directory."
+        )
+    checks["skippedReconstructableDirectories"] = declared_directory_skips
+
     actual_all = {rel(path, package_root).lower() for path in package_root.rglob("*")}
     for forbidden in FORBIDDEN_CODEX_PATHS:
         if forbidden.lower() in actual_all:
