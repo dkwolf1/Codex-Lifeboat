@@ -65,6 +65,7 @@ AUTOMATED_SCENARIOS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
             "dependencyExclusionsRequireExplicitApproval",
             "dependencyExclusionReportRoundTrips",
             "otherUnreadableDirectoriesFailClosed",
+            "provisioningGuardRuntimeExcluded",
         ),
     ),
     (
@@ -80,7 +81,7 @@ AUTOMATED_SCENARIOS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "progress-state-transitions",
         "Measured and non-measurable work have unambiguous progress states",
-        ("progressTransitionsClear",),
+        ("progressTransitionsClear", "operationFailureStatusPersists"),
     ),
 )
 

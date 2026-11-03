@@ -28,6 +28,12 @@ def weighted_operation_progress(
     return min(100.0, max(float(previous), candidate))
 
 
+def operation_status_key(busy: bool, failed: bool) -> str:
+    if busy:
+        return "working"
+    return "failed" if failed else "ready"
+
+
 def backup_destination_initial_directory(
     drives: list[Path], fallback: Path
 ) -> str:
@@ -233,9 +239,12 @@ TEXT = {
         "diagnostics_portability_audit": "Overdraagbaarheid van paden",
         "diagnostics_atomic_metadata": "Atomair opslaan van metadata",
         "ready": "Gereed",
+        "failed": "Mislukt",
         "working": "Bezig… sluit dit venster niet.",
         "operation_idle_title": "Klaar voor een veilige overdracht",
         "operation_idle_subtitle": "Maak een back-up of zet er één terug wanneer u wilt.",
+        "operation_failed_title": "Bewerking mislukt",
+        "operation_failed_subtitle": "Er is niets voltooid. Bekijk de technische details voordat u het opnieuw probeert.",
         "operation_backup_title": "Back-up wordt gemaakt",
         "operation_verify_title": "Back-up wordt gecontroleerd",
         "operation_restore_title": "Back-up wordt teruggezet",
@@ -515,9 +524,12 @@ TEXT = {
         "diagnostics_portability_audit": "Path portability",
         "diagnostics_atomic_metadata": "Atomic metadata storage",
         "ready": "Ready",
+        "failed": "Failed",
         "working": "Working… do not close this window.",
         "operation_idle_title": "Ready for a safe transfer",
         "operation_idle_subtitle": "Create or restore a backup whenever you are ready.",
+        "operation_failed_title": "Operation failed",
+        "operation_failed_subtitle": "Nothing was completed. Review the technical details before trying again.",
         "operation_backup_title": "Backup in progress",
         "operation_verify_title": "Verifying backup",
         "operation_restore_title": "Restoring backup",
@@ -2312,6 +2324,7 @@ class TransferApp(tk.Tk):
         self.last_result_verified = False
         self.current_tab = "overview"
         self.operation_key = "idle"
+        self.operation_failed = False
         self.operation_started_at: float | None = None
         self.phase_started_at: float | None = None
         self.phase_signature = ""
@@ -3013,6 +3026,7 @@ class TransferApp(tk.Tk):
 
     def _begin_operation(self, operation: str | None = None) -> None:
         self.operation_key = operation or "other"
+        self.operation_failed = False
         self.operation_started_at = time.monotonic()
         self.phase_started_at = self.operation_started_at
         self.phase_signature = ""
@@ -3028,6 +3042,7 @@ class TransferApp(tk.Tk):
         self._render_operation_state()
 
     def _finish_operation(self, success: bool) -> None:
+        self.operation_failed = not success
         if self.operation_started_at is not None:
             self.elapsed_label.configure(
                 text=f"{self.t('elapsed')}: "
@@ -3145,6 +3160,9 @@ class TransferApp(tk.Tk):
         if self.busy:
             self.operation_title.configure(text=self.t(self._operation_title_key()))
             self.operation_subtitle.configure(text=self.t("source_unchanged"))
+        elif self.operation_failed:
+            self.operation_title.configure(text=self.t("operation_failed_title"))
+            self.operation_subtitle.configure(text=self.t("operation_failed_subtitle"))
         else:
             self.operation_title.configure(text=self.t("operation_idle_title"))
             self.operation_subtitle.configure(text=self.t("operation_idle_subtitle"))
@@ -3227,18 +3245,23 @@ class TransferApp(tk.Tk):
                 text="●  " + self.t("warning"), bg="#FFF4E5", fg="#A15C00"
             )
         else:
+            terminal_key = operation_status_key(self.busy, self.operation_failed)
             self.status_label.configure(
-                text=f"{self.t('current_task')}: {self.last_progress_message or self.t('working')}"
-                if self.busy else self.t("ready")
+                text=(
+                    f"{self.t('current_task')}: "
+                    f"{self.last_progress_message or self.t('working')}"
+                    if self.busy
+                    else self.t(terminal_key)
+                )
             )
             if not self.busy and self.operation_started_at is None:
                 self.elapsed_label.configure(text=f"{self.t('elapsed')}: —")
                 self.remaining_label.configure(text=f"{self.t('remaining')}: —")
                 self.throughput_label.configure(text=f"{self.t('throughput')}: —")
             self.header_status.configure(
-                text="●  " + (self.t("working") if self.busy else self.t("ready")),
-                bg="#EAF2FD" if self.busy else "#E8F7EF",
-                fg=self.BLUE if self.busy else "#128250",
+                text="●  " + self.t(terminal_key),
+                bg=("#EAF2FD" if self.busy else "#FDECEC" if self.operation_failed else "#E8F7EF"),
+                fg=(self.BLUE if self.busy else "#B42318" if self.operation_failed else "#128250"),
             )
 
     def _render_last_result(self) -> None:

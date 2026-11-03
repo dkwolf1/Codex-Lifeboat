@@ -30,7 +30,7 @@ from . import atomic_io, lineage, path_model, project_identity, rollout as rollo
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.10"
+GENERATOR_VERSION = "3.4.11"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -75,6 +75,9 @@ BLOCKED_CODEX_DIRS = {
     "process_manager",
     "thread-writer-locks",
 }
+CODEX_PROVISIONING_GUARD_PATTERN = re.compile(
+    r"^\.codex-provisioning-[0-9a-f]{16}\.guard$", re.IGNORECASE
+)
 ATTACHMENT_PATTERN = re.compile(
     r"(?i)([a-z]:[\\/][^\x00\r\n\"<>|?*]{1,2048}?\.(?:png|jpe?g|webp|gif|bmp|pdf|docx?|xlsx?|pptx?|csv|zip))"
 )
@@ -86,6 +89,11 @@ COMMON_COMPONENT_LIMIT = 255
 
 class BackupError(RuntimeError):
     pass
+
+
+def is_codex_provisioning_guard_name(name: str) -> bool:
+    """Match only Codex's root-level, delete-on-close Windows sandbox guard."""
+    return CODEX_PROVISIONING_GUARD_PATTERN.fullmatch(str(name)) is not None
 
 
 def new_path_budget() -> dict[str, Any]:
@@ -1118,7 +1126,12 @@ def _portable_profile_stats(
         lowered = entry.name.lower()
         if lowered in {value.lower() for value in handled_names}:
             continue
-        if lowered in blocked_names or lowered in blocked_dirs or entry.is_symlink():
+        if (
+            lowered in blocked_names
+            or lowered in blocked_dirs
+            or is_codex_provisioning_guard_name(entry.name)
+            or entry.is_symlink()
+        ):
             continue
         package_prefix = f"codex/portable-profile/{entry.name}"
         if entry.is_dir():
@@ -1943,6 +1956,8 @@ def copy_portable_codex_profile(
         if lowered in {value.lower() for value in BLOCKED_CODEX_NAMES}:
             continue
         if lowered in {value.lower() for value in BLOCKED_CODEX_DIRS}:
+            continue
+        if is_codex_provisioning_guard_name(entry.name):
             continue
         relative = f"codex/portable-profile/{entry.name}"
         if entry.is_symlink():

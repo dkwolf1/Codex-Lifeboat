@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 3.4.11 - 2026-11-03
+
+- Exclude only root-level `.codex-provisioning-<16-hex>.guard` files from backup,
+  inventory, safety copies, and legacy restore payloads. The official Codex Windows
+  sandbox creates these empty delete-on-close guards solely to pin directories
+  during privileged provisioning; chats, projects, settings, near-matching names,
+  nested guard files, and all other `*.guard` files remain mandatory.
+- Keep the operation header and current status visibly failed after an exception
+  instead of returning to the misleading `Ready` state.
+
 ## 3.4.10 - 2026-11-02
 
 - Replaced the single `*.dist-info` exception with a complete, read-only preflight
