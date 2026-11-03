@@ -28,7 +28,7 @@ except ImportError:
     from validate import validate
 
 
-RESTORE_VERSION = "3.4.10"
+RESTORE_VERSION = "3.4.11"
 PROTECTED_NAMES = {"auth.json", "installation_id", "cap_sid"}
 RUNTIME_NAMES = {
     ".sandbox",
@@ -269,6 +269,8 @@ def _copy_codex_safety(source_codex: Path, safety_codex: Path) -> None:
         if lowered in {"state_5.sqlite", "state_5.sqlite-wal", "state_5.sqlite-shm"}:
             continue
         if lowered in {value.lower() for value in RUNTIME_NAMES}:
+            continue
+        if backup.is_codex_provisioning_guard_name(entry.name):
             continue
         destination = safety_codex / entry.name
         if entry.is_symlink():
@@ -1175,6 +1177,8 @@ def _restore_portable_profile(
         if entry.name.lower() in PAGINATED_HISTORY_DATABASE_NAMES:
             continue
         if entry.name.lower() in {value.lower() for value in PROTECTED_NAMES | RUNTIME_NAMES}:
+            continue
+        if backup.is_codex_provisioning_guard_name(entry.name):
             continue
         if destination.exists():
             _remove_path(destination)

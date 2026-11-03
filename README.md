@@ -3,17 +3,17 @@
 **One-click Codex backup, restore, and Windows PC migration.**
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dkwolf1/Codex-Lifeboat)
-[![Stable: 3.4.10](https://img.shields.io/badge/stable-v3.4.10-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.10)
+[![Stable: 3.4.11](https://img.shields.io/badge/stable-v3.4.11-16a34a)](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.11)
 [![CI](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml/badge.svg)](https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [Nederlands](docs/nl/README.md) · [Security](SECURITY.md) · [Documentation](docs/IMPLEMENTATION-ROADMAP.md)
 
-> **Stable release:** version 3.4.10 preflights complete Codex project dependency
-> trees and requires explicit review of the exact inaccessible paths before they
-> can be excluded. Large restores use conservative peak-space and runtime reserve
-> checks, and rollback is still attempted if a full disk prevents an error-journal
-> update. It passes all 95 source checks and 12 automated compatibility scenarios.
+> **Stable release:** version 3.4.11 safely ignores only Codex's root-level,
+> delete-on-close Windows provisioning guards while keeping every ordinary or
+> near-matching file mandatory. It retains the reviewed dependency preflight and
+> large-restore protections from 3.4.10, and passes all 97 source checks and 12
+> automated compatibility scenarios.
 > The migration workflow also has prior
 > physical Windows 11 PC A → PC B → PC A evidence. Keep an independent copy of
 > irreplaceable data and read the [testing guide](docs/TESTING-GUIDE.md).
@@ -22,7 +22,7 @@ https://mechscript.nl/en/codex-lifeboat-backup-restore-migrate-en/
 
 ## Download for Windows
 
-### [Download Codex Lifeboat 3.4.10 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.10)
+### [Download Codex Lifeboat 3.4.11 for Windows](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.11)
 
 On the release page, download only:
 

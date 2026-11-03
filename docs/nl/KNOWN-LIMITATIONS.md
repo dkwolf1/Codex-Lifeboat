@@ -1,4 +1,4 @@
-# Bekende grenzen van release 3.4.10
+# Bekende grenzen van release 3.4.11
 
 1. OpenAI publiceert geen stabiel importcontract voor de lokale Codex-database.
    De app gebruikt daarom schema-inspectie en moet na toekomstige grote
@@ -43,11 +43,11 @@
     Gewijzigde records of metadata, ongeldige JSONL, een lege rollout, een langere
     doelchat en iedere andere afwijking vragen een expliciete gebruikerskeuze.
     Lifeboat voert geen algemene chatmerge uit.
-13. Versie 3.4.10 is stabiel na bron-, EXE- en uitgepakte-ZIP-tests en een geslaagde
+13. Versie 3.4.11 is stabiel na bron-, EXE- en uitgepakte-ZIP-tests en een geslaagde
     fysieke Windows 11-route van A naar B en terug. Een fysieke Windows 10-test en
     het lostrekken van een echte USB-stick tijdens schrijven zijn nog niet vastgelegd.
 14. Herstel is transactioneel met automatische rollback, maar nog geen algemeen
     hervatbare bestandskopieerengine. Zeer grote restores kunnen veel tijd kosten.
-    Versie 3.4.10 telt logische bytes, geschatte bestandssysteemallocatie en een
+    Versie 3.4.11 telt logische bytes, geschatte bestandssysteemallocatie en een
     veiligheidsreserve conservatief mee en controleert vrije ruimte opnieuw tijdens
     grote schrijfacties; een ander proces kan ruimte nog steeds onverwacht vullen.

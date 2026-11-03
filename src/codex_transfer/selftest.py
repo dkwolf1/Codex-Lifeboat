@@ -763,7 +763,7 @@ def _write_older_target(profile: Path, marker: str) -> tuple[Path, Path]:
 
 
 def _progress_model_test() -> bool:
-    from .gui import TransferApp, weighted_operation_progress
+    from .gui import TransferApp, operation_status_key, weighted_operation_progress
 
     progress = weighted_operation_progress(0, 0, 5, 10)
     progress = weighted_operation_progress(progress, 1, 0, 0)
@@ -781,6 +781,19 @@ def _progress_model_test() -> bool:
         and TransferApp._progress_stage("Inventorying conversation attachments") == 2
         and TransferApp._progress_stage("Hashing backup: 5/10") == 3
         and TransferApp._progress_stage("Backup complete") == 4
+        and operation_status_key(True, False) == "working"
+        and operation_status_key(False, False) == "ready"
+        and operation_status_key(False, True) == "failed"
+    )
+
+
+def _operation_failure_status_test() -> bool:
+    from .gui import operation_status_key
+
+    return bool(
+        operation_status_key(True, False) == "working"
+        and operation_status_key(False, False) == "ready"
+        and operation_status_key(False, True) == "failed"
     )
 
 
@@ -866,6 +879,17 @@ def _gui_smoke_test() -> bool:
         )
         app._finish_operation(True)
         app._set_busy(False)
+        app._begin_operation("backup")
+        app._set_busy(True)
+        app._finish_operation(False)
+        app._set_busy(False)
+        app.update_idletasks()
+        failure_ui_persists = bool(
+            app.operation_title.cget("text") == "Operation failed"
+            and app.status_label.cget("text") == "Failed"
+            and app.header_status.cget("text") == "●  Failed"
+            and app.progress_percent.cget("foreground") == "#B42318"
+        )
         blocked_dialog = RestorePlanDialog(
             app,
             {
@@ -1120,7 +1144,8 @@ def _gui_smoke_test() -> bool:
         )
         diagnostics_dialog.destroy()
         return bool(
-            dutch and english and progress_ui_stable and navigation_tabs
+            dutch and english and progress_ui_stable and failure_ui_persists
+            and navigation_tabs
             and len(app.action_buttons) == 6
             and blocked_is_disabled and ready_is_enabled
             and decision_button_enabled and decision_resolved
@@ -1545,6 +1570,92 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
         and (target_codex / "skills" / "demo" / "SKILL.md").is_file()
         and restored == 2
         and not warnings
+    )
+
+
+def _provisioning_guard_policy_test(root: Path) -> bool:
+    fixture = root / "provisioning-guard-policy"
+    source_codex = fixture / "source-user" / ".codex"
+    package_root = fixture / "package"
+    target_codex = fixture / "target-user" / ".codex"
+    safety_codex = fixture / "safety" / "codex-before-restore"
+    source_codex.mkdir(parents=True)
+    target_codex.mkdir(parents=True)
+
+    exact_names = {
+        ".codex-provisioning-0123456789abcdef.guard",
+        ".CODEX-PROVISIONING-FEDCBA9876543210.GUARD",
+    }
+    for name in exact_names:
+        (source_codex / name).write_bytes(b"")
+    near_match = source_codex / ".codex-provisioning-0123456789abcdef.guard.bak"
+    near_match.write_bytes(b"ordinary-root-data")
+    nested_guard = (
+        source_codex
+        / "skills"
+        / "demo"
+        / ".codex-provisioning-0123456789abcdef.guard"
+    )
+    nested_guard.parent.mkdir(parents=True)
+    nested_guard.write_bytes(b"ordinary-nested-data")
+    (source_codex / "config.toml").write_text("portable = true\n", encoding="utf-8")
+
+    original_copy_file = backup.copy_file
+
+    def reject_root_guard(source: Path, destination: Path) -> None:
+        if (
+            source.parent == source_codex
+            and backup.is_codex_provisioning_guard_name(source.name)
+        ):
+            raise PermissionError(13, "runtime guard must not be copied", str(source))
+        original_copy_file(source, destination)
+
+    stats_files, _stats_bytes, stats_details = backup._portable_profile_stats(
+        source_codex
+    )
+    with mock.patch.object(backup, "copy_file", side_effect=reject_root_guard):
+        records = backup.copy_portable_codex_profile(source_codex, package_root, [])
+
+    portable_root = package_root / "codex" / "portable-profile"
+    exact_absent = all(not (portable_root / name).exists() for name in exact_names)
+    record_names = {str(item.get("name", "")) for item in records}
+    detail_names = {str(item.get("name", "")) for item in stats_details}
+    ordinary_preserved = bool(
+        (portable_root / near_match.name).read_bytes() == b"ordinary-root-data"
+        and (portable_root / "skills" / "demo" / nested_guard.name).read_bytes()
+        == b"ordinary-nested-data"
+    )
+
+    legacy_name = ".codex-provisioning-0011223344556677.guard"
+    (portable_root / legacy_name).write_bytes(b"legacy-runtime-guard")
+    target_guard = target_codex / legacy_name
+    target_guard.write_bytes(b"live-target-runtime-guard")
+
+    class IdentityTranslator:
+        @staticmethod
+        def text(value: str) -> str:
+            return value
+
+    restored = restore._restore_portable_profile(
+        package_root, target_codex, IdentityTranslator()
+    )
+    restore_preserved_target = target_guard.read_bytes() == b"live-target-runtime-guard"
+    restore._copy_codex_safety(source_codex, safety_codex)
+    safety_skipped = all(not (safety_codex / name).exists() for name in exact_names)
+
+    return bool(
+        backup.is_codex_provisioning_guard_name(legacy_name)
+        and not backup.is_codex_provisioning_guard_name(near_match.name)
+        and stats_files == 3
+        and exact_absent
+        and exact_names.isdisjoint(record_names)
+        and exact_names.isdisjoint(detail_names)
+        and {near_match.name, "skills", "config.toml"}.issubset(record_names)
+        and {near_match.name, "skills", "config.toml"}.issubset(detail_names)
+        and ordinary_preserved
+        and restore_preserved_target
+        and safety_skipped
+        and restored == 3
     )
 
 
@@ -4649,6 +4760,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "completePhase3Inventory": inventory_complete,
         "attachmentDetectionAndAccessResilience": _attachment_resilience_test(root),
         "pluginRuntimeExcludedAndTargetPreserved": _plugin_runtime_policy_test(root),
+        "provisioningGuardRuntimeExcluded": _provisioning_guard_policy_test(root),
         "projectRootInventoryAnalysis": _project_inventory_analysis_test(root),
         "lineageChangeModel": _lineage_model_test(),
         "streamingLineageDigest": _streaming_lineage_digest_test(root),
@@ -4700,6 +4812,7 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "safetyCopyKept": Path(prepared["safetyRoot"]).is_dir(),
         "newerSourceToOlderTarget": older_schema_restore_valid,
         "stableOperationProgress": _progress_model_test(),
+        "operationFailureStatusPersists": _operation_failure_status_test(),
         "dutchEnglishGui": _gui_smoke_test(),
     }
     matrix = compatibility_matrix.build_matrix(checks)

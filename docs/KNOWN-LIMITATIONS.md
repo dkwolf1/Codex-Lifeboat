@@ -1,4 +1,4 @@
-# Known limitations of release 3.4.10
+# Known limitations of release 3.4.11
 
 1. There is no published stable import contract for the local Codex database.
    The assistant therefore inspects schemas and must be retested after major future
@@ -40,11 +40,11 @@
     normalization. Edited records, changed metadata, malformed JSONL, an empty
     rollout, destination-ahead history, and arbitrary divergence require an
     explicit user decision. Lifeboat does not perform a general-purpose chat merge.
-13. Version 3.4.10 is stable after automated source/EXE/ZIP testing and a successful
+13. Version 3.4.11 is stable after automated source/EXE/ZIP testing and a successful
     physical Windows 11 A-to-B-to-A hand-off. A physical Windows 10 run and removal
     of a real USB drive during an active write are not yet documented.
 14. Restore is transactional with automatic rollback but is not yet a general
     resumable file-copy engine. Very large restores can take substantial time.
-    Version 3.4.10 conservatively accounts for logical bytes, estimated allocation
+    Version 3.4.11 conservatively accounts for logical bytes, estimated allocation
     overhead and a safety reserve, and rechecks free space during large writes;
     another process can still consume space unexpectedly.
