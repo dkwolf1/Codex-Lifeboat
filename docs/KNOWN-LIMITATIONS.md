@@ -1,4 +1,4 @@
-# Known limitations of release 3.4.11
+# Known limitations
 
 1. There is no published stable import contract for the local Codex database.
    The assistant therefore inspects schemas and must be retested after major future
@@ -48,3 +48,5 @@
     Version 3.4.11 conservatively accounts for logical bytes, estimated allocation
     overhead and a safety reserve, and rechecks free space during large writes;
     another process can still consume space unexpectedly.
+15. The backup omits entries with reserved Windows device names. Review the
+    warnings in the backup report for the omitted paths.

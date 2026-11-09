@@ -46,7 +46,7 @@ def _sync_parent(path: Path) -> None:
         os.close(descriptor)
 
 
-def _replace(source: Path, target: Path) -> None:
+def replace_with_retry(source: Path, target: Path) -> None:
     """Retry brief Windows scanner/indexer locks without hiding real failures."""
 
     for attempt in range(_WINDOWS_REPLACE_ATTEMPTS):
@@ -86,7 +86,7 @@ def write_text(
             raise OSError(f"Temporary metadata verification failed: {path.name}")
         if validate:
             validate(persisted)
-        _replace(temporary, path)
+        replace_with_retry(temporary, path)
         _sync_parent(path)
     finally:
         try:

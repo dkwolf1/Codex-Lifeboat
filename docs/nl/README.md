@@ -4,18 +4,17 @@
 
 [Wiki](https://github.com/dkwolf1/Codex-Lifeboat/wiki) · [English](../../README.md) · [Beveiliging](../../SECURITY.md) · [Documentatie](IMPLEMENTATION-ROADMAP.md)
 
-> **Stabiele release:** versie 3.4.11 negeert veilig alleen de root-level,
-> delete-on-close Windows-provisioningguards van Codex; gewone en bijna gelijknamige
-> bestanden blijven verplicht. De gecontroleerde dependency-preflight en
-> restorebeveiliging uit 3.4.10 blijven behouden. Alle 97 broncontroles en 12
-> geautomatiseerde compatibiliteitsscenario's slagen. Voor de
+> **Versie 3.4.12** verhelpt Windows-fouten bij de back-upvoorvertoning en het
+> kopiëren van gereserveerde apparaatnamen zoals `NUL`. De runtime-map
+> `app-server-control` direct onder `.codex` wordt overgeslagen. Het
+> back-uprapport vermeldt overgeslagen apparaatnamen. Voor de
 > migratiewerkwijze bestaat bovendien eerder fysiek bewijs van een Windows 11-
 > route van pc A naar pc B en terug. Bewaar onvervangbare gegevens ook apart en
 > lees de [testhandleiding](TESTHANDLEIDING.md).
 
 ## Downloaden voor Windows
 
-### [Download Codex Lifeboat 3.4.11](https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.11)
+### [Download de nieuwste Codex Lifeboat-release](https://github.com/dkwolf1/Codex-Lifeboat/releases/latest)
 
 Download op de releasepagina uitsluitend dit bestand:
 

@@ -2,44 +2,48 @@
 
 [Nederlands](nl/RELEASE-CHECKLIST.md)
 
-This checklist publishes Codex Lifeboat 3.4.11 as a **stable release**. The tag
+This checklist publishes Codex Lifeboat 3.4.12 as a **stable release**. The tag
 workflow builds and validates fresh release assets, creates
 their checksums and provenance attestations, and publishes the GitHub release.
 
 ## Before pushing
 
-- Confirm that `git status --short` contains only intended 3.4.11 changes.
+- Confirm that `git status --short` contains only intended 3.4.12 changes.
 - Confirm that no real backup, database, token, `.env`, EXE, ZIP, or build
   directory is staged.
 - Keep the generated `dist` directory locally; `.gitignore` deliberately prevents
   it from entering the repository.
-- Do not create the `v3.4.11` tag until the `main` CI run is green.
+- Do not create the `v3.4.12` tag until the `main` CI run is green.
 
 ## Publish with PowerShell
 
 Run these commands from the repository directory:
 
 ```powershell
-git add -A
-git status --short
+git switch -c dkw1/fix-issue-13
+git add -u
+git add -- docs/releases/v3.4.12.md docs/nl/releases/v3.4.12.md
 git diff --cached --check
-git commit -m "Add reviewed dependency preflight exclusions"
-git push origin main
+git commit -m "Fix Windows backup preview and copy edge cases"
+git push -u origin dkw1/fix-issue-13
+gh pr create --base main --head dkw1/fix-issue-13 --title "Fix Windows backup preview and copy edge cases" --body "Addresses issue #13."
 ```
 
-Wait until the `main` CI run is green at
+Merge the PR after its checks pass, then wait until the `main` CI run is green at
 <https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/ci.yml>. Then run:
 
 ```powershell
-git tag -a v3.4.11 -m "Codex Lifeboat 3.4.11 stable release"
-git push origin v3.4.11
+git switch main
+git pull --ff-only origin main
+git tag -a v3.4.12 -m "Codex Lifeboat 3.4.12 stable release"
+git push origin v3.4.12
 ```
 
 The tag triggers `.github/workflows/release.yml`. Do **not** also create a manual
 release with the same tag: the workflow creates it as the stable latest release.
 Follow it at
 <https://github.com/dkwolf1/Codex-Lifeboat/actions/workflows/release.yml>, then
-open <https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.11>.
+open <https://github.com/dkwolf1/Codex-Lifeboat/releases/tag/v3.4.12>.
 
 ## Verify the published release
 
@@ -64,8 +68,8 @@ gh attestation verify .\Codex-Lifeboat-Windows-x64-Portable.zip --repo dkwolf1/C
 
 ## Stable-release evidence
 
-The 97-check source/EXE/ZIP gate, 12/12 automated Windows scenarios, and a physical
-Windows 11 PC A → PC B → PC A workflow all passed. The physical workflow included
+The release workflow runs the 99-check source/EXE/ZIP gate, including 12 automated
+Windows scenarios. A prior physical Windows 11 PC A → PC B → PC A workflow included
 both verify operations and opening and continuing work in Codex after restore.
 Windows 10 and USB-interruption coverage remain documented as pending. Public
 testers must never upload real backups or unsanitized logs.

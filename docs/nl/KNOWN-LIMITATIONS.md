@@ -1,4 +1,4 @@
-# Bekende grenzen van release 3.4.11
+# Bekende grenzen
 
 1. OpenAI publiceert geen stabiel importcontract voor de lokale Codex-database.
    De app gebruikt daarom schema-inspectie en moet na toekomstige grote
@@ -51,3 +51,5 @@
     Versie 3.4.11 telt logische bytes, geschatte bestandssysteemallocatie en een
     veiligheidsreserve conservatief mee en controleert vrije ruimte opnieuw tijdens
     grote schrijfacties; een ander proces kan ruimte nog steeds onverwacht vullen.
+15. De back-up slaat paden met gereserveerde Windows-apparaatnamen over.
+    De waarschuwingen in het back-uprapport vermelden de overgeslagen paden.
