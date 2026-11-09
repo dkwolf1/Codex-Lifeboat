@@ -66,6 +66,8 @@ AUTOMATED_SCENARIOS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
             "dependencyExclusionReportRoundTrips",
             "otherUnreadableDirectoriesFailClosed",
             "provisioningGuardRuntimeExcluded",
+            "reservedWindowsDevicePathsReported",
+            "appServerControlRuntimeExcluded",
         ),
     ),
     (

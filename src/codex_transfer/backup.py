@@ -30,7 +30,7 @@ from . import atomic_io, lineage, path_model, project_identity, rollout as rollo
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.11"
+GENERATOR_VERSION = "3.4.12"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -62,6 +62,7 @@ PAGINATED_HISTORY_DATABASE_NAMES = frozenset(
         "thread_history_1.sqlite-shm",
     }
 )
+APP_SERVER_CONTROL_DIR = "app-server-control"
 BLOCKED_CODEX_DIRS = {
     ".sandbox",
     ".sandbox-bin",
@@ -69,6 +70,7 @@ BLOCKED_CODEX_DIRS = {
     ".tmp",
     "tmp",
     "cache",
+    APP_SERVER_CONTROL_DIR,
     "computer-use",
     "node_repl",
     "plugins",
@@ -77,6 +79,9 @@ BLOCKED_CODEX_DIRS = {
 }
 CODEX_PROVISIONING_GUARD_PATTERN = re.compile(
     r"^\.codex-provisioning-[0-9a-f]{16}\.guard$", re.IGNORECASE
+)
+WINDOWS_DEVICE_NAME = re.compile(
+    r"(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|(?:COM|LPT)[1-9¹²³])"
 )
 ATTACHMENT_PATTERN = re.compile(
     r"(?i)([a-z]:[\\/][^\x00\r\n\"<>|?*]{1,2048}?\.(?:png|jpe?g|webp|gif|bmp|pdf|docx?|xlsx?|pptx?|csv|zip))"
@@ -94,6 +99,16 @@ class BackupError(RuntimeError):
 def is_codex_provisioning_guard_name(name: str) -> bool:
     """Match only Codex's root-level, delete-on-close Windows sandbox guard."""
     return CODEX_PROVISIONING_GUARD_PATTERN.fullmatch(str(name)) is not None
+
+
+def is_windows_device_name(name: str) -> bool:
+    """Match reserved Windows device names, including names with extensions."""
+    base = name.partition(":")[0].partition(".")[0].rstrip(" ").upper()
+    return WINDOWS_DEVICE_NAME.fullmatch(base) is not None
+
+
+def windows_device_skip_warning(path: Path) -> str:
+    return f"Skipped reserved Windows device name (including any contents): {path}"
 
 
 def new_path_budget() -> dict[str, Any]:
@@ -758,6 +773,8 @@ def dependency_preflight(source_codex: Path) -> dict[str, Any]:
             continue
 
         for entry in entries:
+            if is_windows_device_name(entry.name):
+                continue
             path = Path(entry.path)
             path_type = "unknown"
             try:
@@ -899,6 +916,8 @@ def copy_tree(
     dependency_exclusions: dict[str, dict[str, Any]] | None = None,
     applied_dependency_exclusions: list[dict[str, Any]] | None = None,
     before_copy: Callable[[Path, Path, int], None] | None = None,
+    *,
+    allow_windows_device_skips: bool = True,
 ) -> tuple[int, int]:
     count = 0
     byte_count = 0
@@ -928,10 +947,17 @@ def copy_tree(
         except OSError as exc:
             raise BackupError(f"Cannot read directory: {current_source}: {exc}") from exc
         for entry in entries:
-            entry_source = Path(entry.path)
+            entry_source = current_source / entry.name
+            if is_windows_device_name(entry.name):
+                if not allow_windows_device_skips:
+                    raise BackupError(
+                        f"Cannot copy a reserved Windows device name: {entry_source}"
+                    )
+                warnings.append(windows_device_skip_warning(entry_source))
+                continue
             entry_destination = current_destination / entry.name
             confirmed_file = False
-            relative_text = os.path.relpath(entry_source, source).lower()
+            relative_text = str(entry_source.relative_to(source)).lower()
             if any(fragment and fragment in relative_text for fragment in excluded):
                 warnings.append(f"Excluded by configuration: {entry_source}")
                 continue
@@ -987,52 +1013,9 @@ def tree_stats(
     package_prefix: str | None = None,
     path_budget: dict[str, Any] | None = None,
 ) -> tuple[int, int]:
-    count = 0
-    byte_count = 0
-    excluded = [value.replace("/", os.sep).lower() for value in exclude_fragments]
-    if path_budget is not None and package_prefix:
-        record_projected_path(path_budget, source, package_prefix)
-    for root, directories, files in os.walk(source, followlinks=False):
-        root_path = Path(root)
-        directories[:] = [
-            name
-            for name in directories
-            if not (root_path / name).is_symlink()
-            and not any(
-                fragment in os.path.relpath(root_path / name, source).lower()
-                for fragment in excluded
-                if fragment
-            )
-        ]
-        if path_budget is not None and package_prefix:
-            for name in directories:
-                directory = root_path / name
-                relative = Path(os.path.relpath(directory, source))
-                record_projected_path(
-                    path_budget,
-                    directory,
-                    PurePosixPath(package_prefix, *relative.parts).as_posix(),
-                )
-        for name in files:
-            path = root_path / name
-            if path.is_symlink():
-                continue
-            relative_text = os.path.relpath(path, source).lower()
-            if any(fragment in relative_text for fragment in excluded if fragment):
-                continue
-            try:
-                byte_count += path.stat().st_size
-                count += 1
-                if path_budget is not None and package_prefix:
-                    relative = Path(os.path.relpath(path, source))
-                    record_projected_path(
-                        path_budget,
-                        path,
-                        PurePosixPath(package_prefix, *relative.parts).as_posix(),
-                        reconstructable_cache=is_reconstructable_python_cache(path),
-                    )
-            except OSError:
-                pass
+    count, byte_count, _ = tree_stats_with_breakdown(
+        source, exclude_fragments, package_prefix=package_prefix, path_budget=path_budget
+    )
     return count, byte_count
 
 
@@ -1052,30 +1035,33 @@ def tree_stats_with_breakdown(
         record_projected_path(path_budget, source, package_prefix)
     for root, directories, files in os.walk(source, followlinks=False):
         root_path = Path(root)
-        directories[:] = [
-            name
-            for name in directories
-            if not (root_path / name).is_symlink()
-            and not any(
-                fragment in os.path.relpath(root_path / name, source).lower()
-                for fragment in excluded
-                if fragment
-            )
-        ]
-        if path_budget is not None and package_prefix:
-            for name in directories:
-                directory = root_path / name
-                relative = Path(os.path.relpath(directory, source))
+        kept_directories: list[str] = []
+        for name in directories:
+            directory = root_path / name
+            if is_windows_device_name(name):
+                log(windows_device_skip_warning(directory))
+                continue
+            relative = directory.relative_to(source)
+            if directory.is_symlink() or any(
+                fragment and fragment in str(relative).lower() for fragment in excluded
+            ):
+                continue
+            kept_directories.append(name)
+            if path_budget is not None and package_prefix:
                 record_projected_path(
                     path_budget,
                     directory,
                     PurePosixPath(package_prefix, *relative.parts).as_posix(),
                 )
+        directories[:] = kept_directories
         for name in files:
             path = root_path / name
+            if is_windows_device_name(name):
+                log(windows_device_skip_warning(path))
+                continue
             if path.is_symlink():
                 continue
-            relative = Path(os.path.relpath(path, source))
+            relative = path.relative_to(source)
             relative_text = str(relative).lower()
             if any(fragment in relative_text for fragment in excluded if fragment):
                 continue
@@ -1124,6 +1110,9 @@ def _portable_profile_stats(
     details: list[dict[str, Any]] = []
     for entry in sorted(source_codex.iterdir(), key=lambda item: item.name.lower()):
         lowered = entry.name.lower()
+        if is_windows_device_name(entry.name):
+            log(windows_device_skip_warning(entry))
+            continue
         if lowered in {value.lower() for value in handled_names}:
             continue
         if (
@@ -1951,6 +1940,9 @@ def copy_portable_codex_profile(
     }
     for entry in sorted(source_codex.iterdir(), key=lambda item: item.name.lower()):
         lowered = entry.name.lower()
+        if is_windows_device_name(entry.name):
+            warnings.append(windows_device_skip_warning(entry))
+            continue
         if lowered in {value.lower() for value in handled_names}:
             continue
         if lowered in {value.lower() for value in BLOCKED_CODEX_NAMES}:

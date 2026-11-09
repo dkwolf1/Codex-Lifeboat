@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 3.4.12 - 2026-11-09
+
+- Fix Windows backup preview and copying when a project contains a reserved device
+  name such as `NUL`. Skipped entries are logged during preview and listed in
+  the completed backup report.
+- Exclude the root-level Codex `app-server-control` runtime directory before
+  checking its metadata. Keep the destination's live directory during restore.
+- Add regression coverage for reserved NTFS entries and Windows error 1920.
+- Retry brief Windows file locks when replacing the restored session index.
+
 ## 3.4.11 - 2026-11-03
 
 - Exclude only root-level `.codex-provisioning-<16-hex>.guard` files from backup,

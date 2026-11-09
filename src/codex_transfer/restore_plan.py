@@ -1057,11 +1057,17 @@ def build_restore_plan(
         if path.startswith("codex/") or path.startswith("attachments/")
     )
     codex_target = target_profile / ".codex"
-    codex_target_bytes = sum(
-        path.stat().st_size
-        for path in codex_target.rglob("*")
-        if path.is_file()
-    ) if codex_target.is_dir() else 0
+    codex_target_bytes = 0
+    if codex_target.is_dir():
+        for entry in codex_target.iterdir():
+            if entry.name.lower() == backup.APP_SERVER_CONTROL_DIR:
+                continue
+            if entry.is_file():
+                codex_target_bytes += entry.stat().st_size
+            elif not entry.is_symlink() and entry.is_dir():
+                codex_target_bytes += sum(
+                    path.stat().st_size for path in entry.rglob("*") if path.is_file()
+                )
     items.append(
         {
             "key": "codex/managed-state",

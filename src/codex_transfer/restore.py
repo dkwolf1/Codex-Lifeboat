@@ -12,9 +12,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 try:
-    from . import backup, lineage, location_mapper, path_model, portability_audit, project_identity, recovery, restore_plan, rollout as rollout_io, windows
+    from . import atomic_io, backup, lineage, location_mapper, path_model, portability_audit, project_identity, recovery, restore_plan, rollout as rollout_io, windows
     from .validate import validate
 except ImportError:
+    import atomic_io
     import backup
     import lineage
     import location_mapper
@@ -28,21 +29,9 @@ except ImportError:
     from validate import validate
 
 
-RESTORE_VERSION = "3.4.11"
+RESTORE_VERSION = "3.4.12"
 PROTECTED_NAMES = {"auth.json", "installation_id", "cap_sid"}
-RUNTIME_NAMES = {
-    ".sandbox",
-    ".sandbox-bin",
-    ".sandbox-secrets",
-    ".tmp",
-    "tmp",
-    "cache",
-    "computer-use",
-    "node_repl",
-    "plugins",
-    "process_manager",
-    "thread-writer-locks",
-}
+RUNTIME_NAMES = backup.BLOCKED_CODEX_DIRS
 PORTABLE_STATE_KEYS = backup.PORTABLE_STATE_KEYS
 PAGINATED_HISTORY_DATABASE_NAMES = backup.PAGINATED_HISTORY_DATABASE_NAMES
 
@@ -174,6 +163,7 @@ def _copy_all(source: Path, destination: Path) -> tuple[int, int]:
         [],
         warnings,
         before_copy=check_space,
+        allow_windows_device_skips=False,
     )
 
 
@@ -1100,12 +1090,18 @@ def _rebuild_session_index(database: Path, target_codex: Path) -> int:
         seen.add(value)
         active.append({"id": value, "title": str(title or value)})
     destination = target_codex / "session_index.jsonl"
-    temporary = destination.with_name(destination.name + ".restore.tmp")
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-        for item in active:
-            handle.write(json.dumps(item, ensure_ascii=False, separators=(",", ":")) + "\n")
-    os.replace(temporary, destination)
+    try:
+        with temporary.open("x", encoding="utf-8", newline="\n") as handle:
+            for item in active:
+                handle.write(json.dumps(item, ensure_ascii=False, separators=(",", ":")) + "\n")
+        atomic_io.replace_with_retry(temporary, destination)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
     return len(active)
 
 

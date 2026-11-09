@@ -1659,6 +1659,94 @@ def _provisioning_guard_policy_test(root: Path) -> bool:
     )
 
 
+def _reserved_windows_device_path_test(root: Path) -> bool:
+    source = root / "reserved-device-source"
+    source.mkdir()
+    nested = source / "nested"
+    nested.mkdir()
+    (source / "NUL-notes.txt").write_bytes(b"ordinary")
+    (nested / "COM10.txt").write_bytes(b"kept")
+    # The extended path creates real NTFS entries instead of opening a device.
+    raw_nested = Path("\\\\?\\" + str(nested)) if os.name == "nt" else nested
+    device_file = raw_nested / "NUL"
+    device_dir = raw_nested / "lpt1.txt"
+    device_file.write_bytes(b"reserved")
+    try:
+        device_dir.mkdir()
+        try:
+            (device_dir / "child.txt").write_bytes(b"excluded")
+            destination = root / "reserved-device-copy"
+            warnings: list[str] = []
+            budget = backup.new_path_budget()
+            with mock.patch.object(backup, "log") as preview_log:
+                files, size, _ = backup.tree_stats_with_breakdown(
+                    source, [], package_prefix="projects/example", path_budget=budget
+                )
+            copied = backup.copy_tree(source, destination, [], warnings)
+            return bool(
+                (files, size) == copied == (2, 12)
+                and len(warnings) == preview_log.call_count == 2
+                and {str(call.args[0]) for call in preview_log.call_args_list} == set(warnings)
+                and all("reserved Windows device name" in warning for warning in warnings)
+                and (destination / "NUL-notes.txt").read_bytes() == b"ordinary"
+                and (destination / "nested" / "COM10.txt").read_bytes() == b"kept"
+                and {path.name for path in (destination / "nested").iterdir()} == {"COM10.txt"}
+                and device_file.read_bytes() == b"reserved"
+                and (device_dir / "child.txt").read_bytes() == b"excluded"
+                and backup.is_windows_device_name("NuL.tar.gz")
+                and backup.is_windows_device_name("COM¹")
+            )
+        finally:
+            shutil.rmtree(device_dir)
+    finally:
+        device_file.unlink()
+
+
+def _app_server_control_policy_test(root: Path) -> bool:
+    fixture = root / "app-server-control-policy"
+    source = fixture / "source" / ".codex"
+    target = fixture / "target" / ".codex"
+    package = fixture / "package"
+    safety = fixture / "safety"
+    runtime = "App-Server-Control"
+    for codex in (source, target):
+        (codex / runtime).mkdir(parents=True)
+        (codex / runtime / "app-server-startup.lock").write_bytes(b"live")
+    nested = source / "skills" / runtime
+    nested.mkdir(parents=True)
+    (nested / "notes.bin").write_bytes(b"portable")
+
+    original_stat = Path.stat
+
+    def stat_with_blocked_runtime(path: Path, *args, **kwargs):
+        if path.name.lower() == runtime.lower() and path.parent in {source, target}:
+            raise OSError(0, "The file cannot be accessed by the system", str(path), 1920)
+        return original_stat(path, *args, **kwargs)
+
+    class IdentityTranslator:
+        @staticmethod
+        def text(value: str) -> str:
+            return value
+
+    with mock.patch.object(Path, "stat", stat_with_blocked_runtime):
+        files, size, details = backup._portable_profile_stats(source)
+        records = backup.copy_portable_codex_profile(source, package, [])
+        restore._copy_codex_safety(source, safety)
+        portable = package / "codex" / "portable-profile"
+        (portable / runtime).mkdir()
+        (portable / runtime / "app-server-startup.lock").write_bytes(b"legacy")
+        restored = restore._restore_portable_profile(package, target, IdentityTranslator())
+    return bool(
+        (files, size, restored) == (1, 8, 1)
+        and [item["name"] for item in details] == ["skills"]
+        and [item["name"] for item in records] == ["skills"]
+        and not (safety / runtime).exists()
+        and (safety / "skills" / runtime / "notes.bin").read_bytes() == b"portable"
+        and (target / runtime / "app-server-startup.lock").read_bytes() == b"live"
+        and (target / "skills" / runtime / "notes.bin").read_bytes() == b"portable"
+    )
+
+
 def _paginated_history_projection_policy_test(root: Path) -> bool:
     fixture = root / "paginated-history-projection-policy"
     source_codex = fixture / "source-user" / ".codex"
@@ -2177,6 +2265,35 @@ def _atomic_metadata_test(root: Path) -> bool:
         writers / "locations.json", location_mapper.empty_registry()
     )
     diagnostics.save_report(writers / "diagnostics.json", {"safe": True})
+    if os.name == "nt":
+        database = folder / "index.sqlite"
+        connection = sqlite3.connect(database)
+        try:
+            connection.execute('CREATE TABLE threads (id TEXT, title TEXT)')
+            connection.execute("INSERT INTO threads VALUES ('active', 'Active thread')")
+            connection.commit()
+        finally:
+            connection.close()
+        index = folder / "session_index.jsonl"
+        index.write_text('{"id":"previous"}\n', encoding="utf-8")
+        original_replace = os.replace
+        replace_attempts = 0
+
+        def replace_after_lock(source: Path, destination: Path) -> None:
+            nonlocal replace_attempts
+            replace_attempts += 1
+            if replace_attempts == 1:
+                raise PermissionError(13, "Simulated access denied", str(destination), 5)
+            original_replace(source, destination)
+
+        with mock.patch.object(atomic_io.os, "replace", side_effect=replace_after_lock):
+            count = restore._rebuild_session_index(database, folder)
+        if (
+            replace_attempts != 2
+            or count != 1
+            or backup.read_session_index(index)["threadIds"] != ["active"]
+        ):
+            return False
     return bool(
         interrupted
         and old_survived
@@ -4761,6 +4878,8 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "attachmentDetectionAndAccessResilience": _attachment_resilience_test(root),
         "pluginRuntimeExcludedAndTargetPreserved": _plugin_runtime_policy_test(root),
         "provisioningGuardRuntimeExcluded": _provisioning_guard_policy_test(root),
+        "reservedWindowsDevicePathsReported": _reserved_windows_device_path_test(root),
+        "appServerControlRuntimeExcluded": _app_server_control_policy_test(root),
         "projectRootInventoryAnalysis": _project_inventory_analysis_test(root),
         "lineageChangeModel": _lineage_model_test(),
         "streamingLineageDigest": _streaming_lineage_digest_test(root),
