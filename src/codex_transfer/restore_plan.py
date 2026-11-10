@@ -1062,6 +1062,9 @@ def build_restore_plan(
         for entry in codex_target.iterdir():
             if entry.name.lower() == backup.APP_SERVER_CONTROL_DIR:
                 continue
+            if entry.name.lower() == "packages" and entry.is_dir() and not entry.is_symlink():
+                codex_target_bytes += backup.tree_stats(entry, [], installer_packages=True)[1]
+                continue
             if entry.is_file():
                 codex_target_bytes += entry.stat().st_size
             elif not entry.is_symlink() and entry.is_dir():

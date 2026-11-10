@@ -1517,6 +1517,7 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
         skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
         dependency_exclusions: dict[str, dict[str, Any]] | None = None,
         applied_dependency_exclusions: list[dict[str, Any]] | None = None,
+        **kwargs: Any,
     ) -> tuple[int, int]:
         if source.name.lower() == "plugins":
             raise PermissionError(87, "plugin runtime must not be opened", str(source))
@@ -1528,6 +1529,7 @@ def _plugin_runtime_policy_test(root: Path) -> bool:
             skipped_reconstructable_cache,
             dependency_exclusions,
             applied_dependency_exclusions,
+            **kwargs,
         )
 
     warnings: list[str] = []
@@ -1744,6 +1746,140 @@ def _app_server_control_policy_test(root: Path) -> bool:
         and (safety / "skills" / runtime / "notes.bin").read_bytes() == b"portable"
         and (target / runtime / "app-server-startup.lock").read_bytes() == b"live"
         and (target / "skills" / runtime / "notes.bin").read_bytes() == b"portable"
+    )
+
+
+def _project_payload_preflight_test(root: Path) -> bool:
+    source = root / "project-payload-source"
+    source.mkdir()
+    for relative in (
+        "code.py", "node_modules/.bin/playwright", ".venv/lib64",
+        "node_modules-notes/readme.txt", "blocked-one.txt", "blocked-two.txt",
+        "wsl-link", "junction/nested.txt",
+    ):
+        file = source / relative
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(relative.encode("utf-8"))
+
+    original_probe = backup.probe_project_file
+    original_copy = backup.copy_file
+    original_stat = backup.entry_metadata
+
+    def metadata(entry):
+        if entry.name == "junction":
+            return mock.Mock(st_mode=0o040000, st_reparse_tag=0xA0000003)
+        return original_stat(entry)
+
+    def probe(path: Path):
+        if path.name.startswith("blocked-"):
+            raise PermissionError(13, "Injected unreadable user file", str(path))
+        if path.name == "wsl-link":
+            raise FileNotFoundError(2, "Injected UNC link failure", str(path))
+        original_probe(path)
+
+    def copy(source: Path, target: Path):
+        if source.name == "wsl-link":
+            target.write_bytes(b"partial")
+            raise FileNotFoundError(2, "Injected UNC link failure", str(source))
+        if source.name == "code.py":
+            raise OSError(22, "Injected copy2 metadata failure", str(source))
+        original_copy(source, target)
+
+    issues: list[dict[str, str]] = []
+    warnings: list[str] = []
+    generated_names = backup.GENERATED_PROJECT_NAMES
+    target = root / "project-payload-copy"
+    with (
+        mock.patch.object(backup, "entry_metadata", side_effect=metadata),
+        mock.patch.object(backup, "probe_project_file", side_effect=probe),
+        mock.patch.object(backup, "copy_file", side_effect=copy),
+        mock.patch.object(backup, "confirms_wsl_link", side_effect=lambda path: path.name == "wsl-link"),
+    ):
+        backup.tree_stats(source, [], read_issues=issues, generated_names=generated_names)
+        files, _ = backup.copy_tree(source, target, [], warnings, generated_names=generated_names)
+    failure_report = root / "project-preflight-report"
+    try:
+        backup.write_project_read_issues(failure_report, issues)
+    except backup.BackupError:
+        blocked_report = backup.read_json(failure_report / "reports" / "project-read-errors.json")
+    else:
+        return False
+    return bool(
+        {Path(item["sourcePath"]).name for item in issues} == {"blocked-one.txt", "blocked-two.txt"}
+        and blocked_report["count"] == 2
+        and files == 4
+        and (target / "code.py").read_bytes() == b"code.py"
+        and (target / "node_modules-notes" / "readme.txt").is_file()
+        and not any((target / name).exists() for name in ("junction", "wsl-link", ".venv", "node_modules"))
+        and any("Unsupported WSL symbolic link skipped" in warning for warning in warnings)
+        and any("without preserving all metadata" in warning for warning in warnings)
+        and sum("project dependency selection" in warning for warning in warnings) == 2
+        and backup.broad_or_unsafe_project_path(Path(source.anchor), source, source / ".codex")
+    )
+
+
+def _wsl_alias_and_installer_policy_test(root: Path) -> bool:
+    aliases = (r"\\wsl$\Ubuntu\home\user\Project", r"\\wsl.localhost\Ubuntu\home\user\Project")
+    candidates: dict[str, dict[str, Any]] = {}
+    for index, alias in enumerate(aliases):
+        backup.add_project_candidate(candidates, alias, "Project", "test", False, str(index))
+    with (
+        mock.patch.dict(os.environ, {"SystemRoot": r"C:\Windows"}),
+        mock.patch.object(backup.subprocess, "run", side_effect=[
+            mock.Mock(returncode=0), mock.Mock(returncode=1),
+        ]) as run_wsl,
+    ):
+        wsl_link = backup.confirms_wsl_link(Path(aliases[0] + r"\lib64"))
+        wsl_regular_file = backup.confirms_wsl_link(Path(aliases[1] + r"\source.py"))
+        wsl_command = run_wsl.call_args_list[0].args[0]
+    source = root / "installer-policy-source"
+    package = root / "installer-policy-package"
+    target_profile = root / "installer-policy-target"
+    target = target_profile / ".codex"
+    for codex in (source, target):
+        installer = codex / "packages" / "standalone"
+        installer.mkdir(parents=True)
+        (installer / "current").write_bytes(b"local-installation")
+        (codex / "packages" / "custom.bin").write_bytes(b"custom-data")
+    warnings: list[str] = []
+    files, _, _ = backup._portable_profile_stats(source)
+    backup.copy_portable_codex_profile(source, package, warnings)
+    portable = package / "codex" / "portable-profile" / "packages"
+    excluded = not (portable / "standalone").exists()
+    (portable / "standalone").mkdir()
+    (portable / "standalone" / "current").write_bytes(b"legacy-installer")
+    safety = root / "installer-policy-safety"
+    restore._copy_codex_safety(target, safety / "codex-before-restore")
+    backup.write_json(safety / "restore-journal.json", {"projects": []})
+    safety_excluded = not (safety / "codex-before-restore" / "packages" / "standalone").exists()
+    (portable / "custom.bin").write_bytes(b"from-backup")
+
+    class IdentityTranslator:
+        @staticmethod
+        def text(value: str) -> str:
+            return value
+
+    restored = restore._restore_portable_profile(package, target, IdentityTranslator())
+    installed_kept = (target / "packages" / "standalone" / "current").read_bytes() == b"local-installation"
+    restored_custom = (target / "packages" / "custom.bin").read_bytes() == b"from-backup"
+    restore.rollback_restore(safety, target_profile)
+    return bool(
+        len(candidates) == 1
+        and next(iter(candidates.values()))["codexProjectIds"] == ["0", "1"]
+        and wsl_link
+        and not wsl_regular_file
+        and wsl_command[1:] == ["--distribution", "Ubuntu", "--exec", "/usr/bin/test", "-L", "/home/user/Project/lib64"]
+        and path_model.wsl_path_key(aliases[0]) != path_model.wsl_path_key(aliases[1].lower())
+        and path_model.wsl_path_key(aliases[0]) != path_model.wsl_path_key(aliases[1].replace("Ubuntu", "Other"))
+        and files == restored == 1
+        and excluded
+        and safety_excluded
+        and installed_kept
+        and restored_custom
+        and (target / "packages" / "standalone" / "current").read_bytes() == b"local-installation"
+        and (target / "packages" / "custom.bin").read_bytes() == b"custom-data"
+        and len(warnings) == 1
+        and "Codex installer package" in warnings[0]
     )
 
 
@@ -4880,6 +5016,8 @@ def run_self_test(work_root: Path | None = None) -> dict[str, Any]:
         "provisioningGuardRuntimeExcluded": _provisioning_guard_policy_test(root),
         "reservedWindowsDevicePathsReported": _reserved_windows_device_path_test(root),
         "appServerControlRuntimeExcluded": _app_server_control_policy_test(root),
+        "projectPayloadPreflightAndRecovery": _project_payload_preflight_test(root),
+        "wslAliasesAndInstallerPackages": _wsl_alias_and_installer_policy_test(root),
         "projectRootInventoryAnalysis": _project_inventory_analysis_test(root),
         "lineageChangeModel": _lineage_model_test(),
         "streamingLineageDigest": _streaming_lineage_digest_test(root),

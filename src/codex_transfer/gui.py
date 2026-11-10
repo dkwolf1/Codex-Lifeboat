@@ -107,6 +107,11 @@ TEXT = {
         "selection_total": "Geselecteerd: {projects}/{total} projecten · {files} bestanden · ongeveer {size}",
         "selection_locked": "Altijd inbegrepen",
         "selection_missing": "Niet gevonden",
+        "selection_unsafe_root": "Te brede map",
+        "selection_unreadable_root": "Niet toegankelijk",
+        "selection_nested_root": "Genest onder {path}. Beide geselecteerde roots worden apart opgenomen.",
+        "selection_exclude_generated": "{name} uitsluiten in geselecteerde projecten",
+        "selection_generated_estimate": "De getoonde grootte is vóór deze uitsluitingen. De definitieve controle gebeurt vóór het kopiëren.",
         "selection_included": "Meegenomen",
         "selection_excluded": "Uitgesloten",
         "selection_codex_card": "Codex-gegevens beschermd",
@@ -392,6 +397,11 @@ TEXT = {
         "selection_total": "Selected: {projects}/{total} projects · {files} files · approximately {size}",
         "selection_locked": "Always included",
         "selection_missing": "Not found",
+        "selection_unsafe_root": "Root too broad",
+        "selection_unreadable_root": "Inaccessible",
+        "selection_nested_root": "Nested under {path}. Both selected roots are included separately.",
+        "selection_exclude_generated": "Exclude {name} in selected projects",
+        "selection_generated_estimate": "The size shown is before these exclusions. The final check runs before copying.",
         "selection_included": "Included",
         "selection_excluded": "Excluded",
         "selection_codex_card": "Codex data protected",
@@ -1431,6 +1441,11 @@ class BackupSelectionDialog(tk.Toplevel):
             if item.get("sourcePresent")
         }
         self.project_by_iid: dict[str, dict] = {}
+        self.generated_choices = {
+            name: tk.BooleanVar(master=self, value=False)
+            for name in sorted(backup.GENERATED_PROJECT_NAMES)
+        }
+        self.excluded_generated_names: list[str] = []
         self.title(parent.t("selection_title"))
         screen_width = max(parent.winfo_screenwidth(), 1100)
         screen_height = max(parent.winfo_screenheight(), 720)
@@ -1662,6 +1677,18 @@ class BackupSelectionDialog(tk.Toplevel):
             font=("Segoe UI", 9), wraplength=1100, justify="left",
         )
         self.details_label.pack(anchor="w")
+        generated_options = ttk.Frame(details_card, style="App.TFrame")
+        generated_options.pack(anchor="w", pady=(6, 0))
+        for name, selected in self.generated_choices.items():
+            ttk.Checkbutton(
+                generated_options,
+                text=self.parent_app.t("selection_exclude_generated", name=name),
+                variable=selected,
+            ).pack(side="left", padx=(0, 14))
+        ttk.Label(
+            details_card, text=self.parent_app.t("selection_generated_estimate"),
+            style="Body.TLabel",
+        ).pack(anchor="w")
 
         footer = ttk.Frame(self, style="App.TFrame")
         footer.grid(row=5, column=0, sticky="ew", padx=26, pady=(8, 22))
@@ -1722,7 +1749,10 @@ class BackupSelectionDialog(tk.Toplevel):
         for iid, item in self.project_by_iid.items():
             path = str(item["path"])
             state = (
-                self.parent_app.t("selection_missing")
+                self.parent_app.t({
+                    "unsafe-broad-root": "selection_unsafe_root",
+                    "unreadable-directory": "selection_unreadable_root",
+                }.get(item.get("rootProblem"), "selection_missing"))
                 if not item.get("sourcePresent")
                 else "✓ " + self.parent_app.t("selection_included")
                 if path in self.selected_paths
@@ -1783,6 +1813,9 @@ class BackupSelectionDialog(tk.Toplevel):
                 for folder in folders[:6]
             )
             detail = "\n".join(lines)
+        if item.get("nestedUnder"):
+            nested = self.parent_app.t("selection_nested_root", path=item["nestedUnder"])
+            detail = f"{nested}\n{detail}"
         self.details_label.configure(text=detail)
 
     def _approve(self) -> None:
@@ -1794,6 +1827,9 @@ class BackupSelectionDialog(tk.Toplevel):
         ):
             return
         self.approved = True
+        self.excluded_generated_names = [
+            name for name, selected in self.generated_choices.items() if selected.get()
+        ]
         self.destroy()
 
 
@@ -3481,7 +3517,9 @@ class TransferApp(tk.Tk):
                 return
             path_report = backup.destination_path_budget(
                 Path(selected),
-                backup.preview_path_budget_items(preview, dialog.excluded_paths),
+                (preview.get("codex") or {}).get("pathBudgetItems", [])
+                if dialog.excluded_generated_names
+                else backup.preview_path_budget_items(preview, dialog.excluded_paths),
             )
             if path_report["safe"]:
                 break
@@ -3546,6 +3584,7 @@ class TransferApp(tk.Tk):
                     "excludedProjectPaths": dialog.excluded_paths,
                     "additionalPortablePaths": [],
                     "excludeDirectoryNames": [],
+                    "excludeGeneratedProjectDirectories": dialog.excluded_generated_names,
                     "approvedDependencyExclusions": [
                         {
                             "sourcePath": item.get("sourcePath"),

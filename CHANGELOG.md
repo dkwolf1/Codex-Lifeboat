@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 3.4.13 - 2026-11-10
+
+- Review unsafe project roots and report unreadable project paths before copying.
+- Add optional, reported exclusions for project entries named `node_modules`
+  and `.venv`. Show nested roots and merge equivalent WSL UNC aliases.
+- Recognize junctions and WSL links, preserve readable file data when metadata
+  copying is unsupported, and retry short Windows file locks.
+- Keep Codex-managed installer packages local through backup and restore.
+
 ## 3.4.12 - 2026-11-09
 
 - Fix Windows backup preview and copying when a project contains a reserved device

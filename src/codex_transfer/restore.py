@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import traceback
 import uuid
 from pathlib import Path, PurePosixPath
@@ -29,7 +30,7 @@ except ImportError:
     from validate import validate
 
 
-RESTORE_VERSION = "3.4.12"
+RESTORE_VERSION = "3.4.13"
 PROTECTED_NAMES = {"auth.json", "installation_id", "cap_sid"}
 RUNTIME_NAMES = backup.BLOCKED_CODEX_DIRS
 PORTABLE_STATE_KEYS = backup.PORTABLE_STATE_KEYS
@@ -139,7 +140,9 @@ def plan_restore_locations(
     )
 
 
-def _copy_all(source: Path, destination: Path) -> tuple[int, int]:
+def _copy_all(
+    source: Path, destination: Path, *, installer_packages: bool = False
+) -> tuple[int, int]:
     warnings: list[str] = []
     files_since_check = 0
     bytes_since_check = 0
@@ -164,6 +167,7 @@ def _copy_all(source: Path, destination: Path) -> tuple[int, int]:
         warnings,
         before_copy=check_space,
         allow_windows_device_skips=False,
+        installer_packages=installer_packages,
     )
 
 
@@ -266,7 +270,7 @@ def _copy_codex_safety(source_codex: Path, safety_codex: Path) -> None:
         if entry.is_symlink():
             continue
         if entry.is_dir():
-            _copy_all(entry, destination)
+            _copy_all(entry, destination, installer_packages=lowered == "packages")
         elif entry.is_file():
             backup.copy_file(entry, destination)
     database = source_codex / "state_5.sqlite"
@@ -418,6 +422,8 @@ class PathTranslator:
             target = self._project_target(original, project_id, item.get("location"))
             self.project_targets[project_id] = target
             self._add_replacement(str(original), str(target))
+            for alias in path_model.wsl_path_aliases(str(original)) or ():
+                self._add_replacement(alias, str(target))
         for item in self.mappings.get("attachments", []):
             attachment_id = str(item["id"])
             name = Path(item.get("originalPath", "attachment.bin")).name
@@ -1165,6 +1171,7 @@ def _restore_portable_profile(
     count = 0
     if not source_root.is_dir():
         return count
+    entries: list[tuple[Path, Path]] = []
     for entry in source_root.iterdir():
         destination = target_codex / entry.name
         # This database is a projection of rollout bytes. Older Lifeboat
@@ -1176,6 +1183,18 @@ def _restore_portable_profile(
             continue
         if backup.is_codex_provisioning_guard_name(entry.name):
             continue
+        if entry.name.lower() == "packages":
+            if entry.is_dir() and not backup.is_link_metadata(entry.lstat()):
+                children = [
+                    child for child in entry.iterdir()
+                    if child.name.lower() not in backup.CODEX_INSTALLER_PACKAGE_NAMES
+                ]
+                if children and not _safe_packages_container(destination):
+                    raise RestoreError(f"Unsafe Codex packages directory: {destination}")
+                entries.extend((child, destination / child.name) for child in children)
+            continue
+        entries.append((entry, destination))
+    for entry, destination in entries:
         if destination.exists():
             _remove_path(destination)
         if entry.is_dir():
@@ -1203,6 +1222,14 @@ def _restore_portable_profile(
                 backup.copy_file(entry, destination)
             count += 1
     return count
+
+
+def _safe_packages_container(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return True
+    return stat.S_ISDIR(metadata.st_mode) and not backup.is_link_metadata(metadata)
 
 
 def _reset_paginated_history_projection(target_codex: Path) -> int:
@@ -1454,9 +1481,33 @@ def rollback_restore(safety_root: Path, target_profile: Path) -> None:
     journal_path = safety_root / "restore-journal.json"
     journal = backup.read_json(journal_path)
     target_codex = target_profile / ".codex"
-    if target_codex.exists():
+    saved_codex = safety_root / "codex-before-restore"
+    target_packages = target_codex / "packages"
+    keep_installer = (
+        target_packages.is_dir()
+        and _safe_packages_container(target_packages)
+        and any(
+            entry.name.lower() in backup.CODEX_INSTALLER_PACKAGE_NAMES
+            for entry in target_packages.iterdir()
+        )
+    )
+    if keep_installer:
+        for entry in target_codex.iterdir():
+            if entry.name.lower() != "packages":
+                _remove_path(entry)
+        for entry in target_packages.iterdir():
+            if entry.name.lower() not in backup.CODEX_INSTALLER_PACKAGE_NAMES:
+                _remove_path(entry)
+    elif target_codex.exists():
         _remove_path(target_codex)
-    _copy_all(safety_root / "codex-before-restore", target_codex)
+    for entry in saved_codex.iterdir():
+        target = target_codex / entry.name
+        if backup.is_link_metadata(entry.lstat()):
+            continue
+        if entry.is_dir():
+            _copy_all(entry, target, installer_packages=entry.name.lower() == "packages")
+        elif entry.is_file():
+            backup.copy_file(entry, target)
     approved_external_roots = tuple(
         Path(value).resolve(strict=False)
         for value in journal.get("approvedExternalRoots", [])
