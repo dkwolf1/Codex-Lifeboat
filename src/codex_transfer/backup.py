@@ -30,7 +30,7 @@ from . import atomic_io, lineage, path_model, project_identity, rollout as rollo
 
 FORMAT_ID = "codex-portable-backup"
 FORMAT_VERSION = "2.4"
-GENERATOR_VERSION = "3.4.12"
+GENERATOR_VERSION = "3.4.13"
 PROGRESS_CALLBACK = None
 STATUS_CALLBACK = None
 _RUNTIME_EXECUTABLE: Path | None = None
@@ -63,6 +63,13 @@ PAGINATED_HISTORY_DATABASE_NAMES = frozenset(
     }
 )
 APP_SERVER_CONTROL_DIR = "app-server-control"
+CODEX_INSTALLER_PACKAGE_NAMES = frozenset({"standalone", "app-server-daemon"})
+GENERATED_PROJECT_NAMES = frozenset({"node_modules", ".venv"})
+LINK_REPARSE_TAGS = {
+    stat.IO_REPARSE_TAG_SYMLINK,
+    stat.IO_REPARSE_TAG_MOUNT_POINT,
+    0xA000001D,  # IO_REPARSE_TAG_LX_SYMLINK
+}
 BLOCKED_CODEX_DIRS = {
     ".sandbox",
     ".sandbox-bin",
@@ -412,13 +419,23 @@ def portable_relative(path: Path, root: Path) -> str:
 
 def clean_windows_path(value: str) -> Path:
     expanded = os.path.expandvars(value).strip().strip('"')
-    if expanded.startswith("\\\\?\\"):
+    if expanded[:8].lower() == "\\\\?\\unc\\":
+        expanded = "\\\\" + expanded[8:]
+    elif expanded.startswith("\\\\?\\"):
         expanded = expanded[4:]
     return Path(expanded).expanduser()
 
 
 def normalized_source_key(path: Path) -> str:
-    return os.path.normcase(os.path.normpath(str(path.resolve(strict=False))))
+    wsl_key = path_model.wsl_path_key(str(path))
+    if wsl_key:
+        return wsl_key
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        # A saved offline path still needs an identity for selection and reporting.
+        resolved = path
+    return os.path.normcase(os.path.normpath(str(resolved)))
 
 
 def matches_database_rollout_path(source: Path, database_path: str) -> bool:
@@ -617,6 +634,81 @@ def copy_file(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
+def is_link_metadata(info: os.stat_result) -> bool:
+    return (
+        stat.S_ISLNK(info.st_mode)
+        or getattr(info, "st_reparse_tag", None) in LINK_REPARSE_TAGS
+    )
+
+
+def confirms_wsl_link(path: Path) -> bool:
+    """Ask the owning distro about an entry Windows could not read."""
+    aliases = path_model.wsl_path_aliases(str(path))
+    if not aliases:
+        return False
+    distro, _, relative = aliases[0][len("\\\\wsl$\\"):].partition("\\")
+    if not relative or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", distro):
+        return False
+    system_root = os.environ.get("SystemRoot")
+    if not system_root:
+        return False
+    wsl_executable = Path(system_root) / "System32" / "wsl.exe"
+    linux_path = "/" + relative.replace("\\", "/")
+    try:
+        result = subprocess.run(
+            [str(wsl_executable), "--distribution", distro, "--exec", "/usr/bin/test", "-L", linux_path],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def entry_metadata(entry: os.DirEntry) -> os.stat_result:
+    """Read directory-entry metadata without following junctions or WSL links."""
+    return entry.stat(follow_symlinks=False)
+
+
+def copy_backup_payload(source: Path, destination: Path, warnings: list[str]) -> None:
+    """Retry transient Windows locks and preserve bytes if copy2 rejects metadata."""
+    for attempt in range(4):
+        try:
+            copy_file(source, destination)
+            return
+        except OSError as exc:
+            if (
+                getattr(exc, "winerror", None) in {5, 32, 33}
+                and attempt < 3
+            ):
+                time.sleep(0.05 * (2**attempt))
+                continue
+            if exc.errno == errno.EINVAL:
+                source_info = source.lstat()
+                if stat.S_ISREG(source_info.st_mode) and not is_link_metadata(source_info):
+                    # A successful data-only copy is still verified in the hash manifest.
+                    shutil.copyfile(source, destination)
+                    warnings.append(f"Copied file data without preserving all metadata: {source}")
+                    return
+            raise
+
+
+def probe_project_file(path: Path) -> None:
+    for attempt in range(4):
+        try:
+            with path.open("rb") as stream:
+                stream.read(1)
+            return
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in {5, 32, 33} or attempt == 3:
+                raise
+            time.sleep(0.05 * (2**attempt))
+
+
 def is_reconstructable_python_cache(path: Path) -> bool:
     """Return true only for disposable Python bytecode cache files."""
     return bool(
@@ -780,11 +872,14 @@ def dependency_preflight(source_codex: Path) -> dict[str, Any]:
             try:
                 if entry.is_symlink():
                     continue
-                if entry.is_dir(follow_symlinks=False):
+                info = entry_metadata(entry)
+                if is_link_metadata(info):
+                    continue
+                if stat.S_ISDIR(info.st_mode):
                     path_type = "directory"
                     stack.append(path)
                     continue
-                if not entry.is_file(follow_symlinks=False):
+                if not stat.S_ISREG(info.st_mode):
                     continue
                 path_type = "file"
                 scanned_files += 1
@@ -918,6 +1013,8 @@ def copy_tree(
     before_copy: Callable[[Path, Path, int], None] | None = None,
     *,
     allow_windows_device_skips: bool = True,
+    generated_names: frozenset[str] = frozenset(),
+    installer_packages: bool = False,
 ) -> tuple[int, int]:
     count = 0
     byte_count = 0
@@ -925,9 +1022,7 @@ def copy_tree(
     stack: list[tuple[Path, Path]] = [(source, destination)]
     while stack:
         current_source, current_destination = stack.pop()
-        approved = (dependency_exclusions or {}).get(
-            normalized_source_key(current_source)
-        )
+        approved = dependency_exclusions.get(normalized_source_key(current_source)) if dependency_exclusions else None
         if approved and approved.get("pathType") == "directory":
             if applied_dependency_exclusions is None:
                 raise BackupError("Approved dependency exclusion has no audit record.")
@@ -958,12 +1053,16 @@ def copy_tree(
             entry_destination = current_destination / entry.name
             confirmed_file = False
             relative_text = str(entry_source.relative_to(source)).lower()
+            if entry.name.lower() in generated_names:
+                warnings.append(f"Excluded by project dependency selection: {entry_source}")
+                continue
+            if installer_packages and relative_text in CODEX_INSTALLER_PACKAGE_NAMES:
+                warnings.append(f"Skipped Codex installer package: {entry_source}")
+                continue
             if any(fragment and fragment in relative_text for fragment in excluded):
                 warnings.append(f"Excluded by configuration: {entry_source}")
                 continue
-            approved = (dependency_exclusions or {}).get(
-                normalized_source_key(entry_source)
-            )
+            approved = dependency_exclusions.get(normalized_source_key(entry_source)) if dependency_exclusions else None
             if approved and approved.get("pathType") == "file":
                 if applied_dependency_exclusions is None:
                     raise BackupError("Approved dependency exclusion has no audit record.")
@@ -981,19 +1080,33 @@ def copy_tree(
                 if entry.is_symlink():
                     warnings.append(f"Symbolic link or reparse point skipped: {entry_source}")
                     continue
-                if entry.is_dir(follow_symlinks=False):
+                info = entry_metadata(entry)
+                if is_link_metadata(info):
+                    warnings.append(f"Symbolic link or reparse point skipped: {entry_source}")
+                    continue
+                if stat.S_ISDIR(info.st_mode):
                     stack.append((entry_source, entry_destination))
-                elif entry.is_file(follow_symlinks=False):
+                elif stat.S_ISREG(info.st_mode):
                     confirmed_file = True
-                    size = entry.stat(follow_symlinks=False).st_size
+                    size = info.st_size
                     if before_copy:
                         before_copy(entry_source, entry_destination, size)
-                    copy_file(entry_source, entry_destination)
+                    if allow_windows_device_skips:
+                        copy_backup_payload(entry_source, entry_destination, warnings)
+                    else:
+                        copy_file(entry_source, entry_destination)
                     count += 1
                     byte_count += size
                     if count % 1000 == 0:
                         log(f"  ... copied {count} files from {source.name}")
+                else:
+                    warnings.append(f"Skipped non-regular filesystem entry: {entry_source}")
             except OSError as exc:
+                if allow_windows_device_skips and confirms_wsl_link(entry_source):
+                    if confirmed_file:
+                        entry_destination.unlink(missing_ok=True)
+                    warnings.append(f"Unsupported WSL symbolic link skipped: {entry_source}")
+                    continue
                 if confirmed_file and record_skipped_reconstructable_cache(
                     entry_source,
                     entry_destination,
@@ -1012,9 +1125,14 @@ def tree_stats(
     *,
     package_prefix: str | None = None,
     path_budget: dict[str, Any] | None = None,
+    generated_names: frozenset[str] = frozenset(),
+    installer_packages: bool = False,
+    read_issues: list[dict[str, str]] | None = None,
 ) -> tuple[int, int]:
     count, byte_count, _ = tree_stats_with_breakdown(
-        source, exclude_fragments, package_prefix=package_prefix, path_budget=path_budget
+        source, exclude_fragments, package_prefix=package_prefix, path_budget=path_budget,
+        generated_names=generated_names, installer_packages=installer_packages,
+        read_issues=read_issues,
     )
     return count, byte_count
 
@@ -1025,6 +1143,9 @@ def tree_stats_with_breakdown(
     *,
     package_prefix: str | None = None,
     path_budget: dict[str, Any] | None = None,
+    generated_names: frozenset[str] = frozenset(),
+    installer_packages: bool = False,
+    read_issues: list[dict[str, str]] | None = None,
 ) -> tuple[int, int, list[dict[str, Any]]]:
     """Return logical file usage and immediate-child totals without changing data."""
     count = 0
@@ -1033,42 +1154,70 @@ def tree_stats_with_breakdown(
     excluded = [value.replace("/", os.sep).lower() for value in exclude_fragments]
     if path_budget is not None and package_prefix:
         record_projected_path(path_budget, source, package_prefix)
-    for root, directories, files in os.walk(source, followlinks=False):
-        root_path = Path(root)
-        kept_directories: list[str] = []
-        for name in directories:
-            directory = root_path / name
-            if is_windows_device_name(name):
-                log(windows_device_skip_warning(directory))
-                continue
-            relative = directory.relative_to(source)
-            if directory.is_symlink() or any(
-                fragment and fragment in str(relative).lower() for fragment in excluded
-            ):
-                continue
-            kept_directories.append(name)
-            if path_budget is not None and package_prefix:
-                record_projected_path(
-                    path_budget,
-                    directory,
-                    PurePosixPath(package_prefix, *relative.parts).as_posix(),
+    stack = [source]
+    next_status = time.monotonic() + 0.5
+    checked_files = 0
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as stream:
+                entries = list(stream)
+        except OSError as exc:
+            if read_issues is not None:
+                read_issues.append({"sourcePath": str(current), "error": str(exc)})
+            continue
+        for entry in entries:
+            if read_issues is not None and time.monotonic() >= next_status:
+                report_status(
+                    0, 0, f"Checking project readability: {source.name} "
+                    f"({checked_files:,} files checked, {len(read_issues):,} blocked paths)"
                 )
-        directories[:] = kept_directories
-        for name in files:
-            path = root_path / name
-            if is_windows_device_name(name):
+                next_status = time.monotonic() + 0.5
+            path = current / entry.name
+            if is_windows_device_name(entry.name):
                 log(windows_device_skip_warning(path))
-                continue
-            if path.is_symlink():
                 continue
             relative = path.relative_to(source)
             relative_text = str(relative).lower()
+            if entry.name.lower() in generated_names:
+                continue
+            if installer_packages and relative_text in CODEX_INSTALLER_PACKAGE_NAMES:
+                continue
             if any(fragment in relative_text for fragment in excluded if fragment):
                 continue
+            confirmed_file = False
             try:
-                size = path.stat().st_size
-            except OSError:
+                if entry.is_symlink():
+                    continue
+                info = entry_metadata(entry)
+                if is_link_metadata(info):
+                    continue
+                directory = stat.S_ISDIR(info.st_mode)
+                if not directory and not stat.S_ISREG(info.st_mode):
+                    continue
+                confirmed_file = not directory
+                if read_issues is not None and not directory:
+                    checked_files += 1
+                    probe_project_file(path)
+            except OSError as exc:
+                if (
+                    read_issues is not None
+                    and not (confirmed_file and is_reconstructable_python_cache(path))
+                    and not confirms_wsl_link(path)
+                ):
+                    read_issues.append({"sourcePath": str(path), "error": str(exc)})
                 continue
+            if path_budget is not None and package_prefix:
+                record_projected_path(
+                    path_budget,
+                    path,
+                    PurePosixPath(package_prefix, *relative.parts).as_posix(),
+                    reconstructable_cache=not directory and is_reconstructable_python_cache(path),
+                )
+            if directory:
+                stack.append(path)
+                continue
+            size = info.st_size
             top = relative.parts[0] if len(relative.parts) > 1 else "(root files)"
             item = children.setdefault(
                 top, {"name": top, "fileCount": 0, "totalBytes": 0}
@@ -1077,13 +1226,6 @@ def tree_stats_with_breakdown(
             item["totalBytes"] += size
             count += 1
             byte_count += size
-            if path_budget is not None and package_prefix:
-                record_projected_path(
-                    path_budget,
-                    path,
-                    PurePosixPath(package_prefix, *relative.parts).as_posix(),
-                    reconstructable_cache=is_reconstructable_python_cache(path),
-                )
     return (
         count,
         byte_count,
@@ -1119,29 +1261,30 @@ def _portable_profile_stats(
             lowered in blocked_names
             or lowered in blocked_dirs
             or is_codex_provisioning_guard_name(entry.name)
-            or entry.is_symlink()
         ):
             continue
+        try:
+            info = entry.lstat()
+        except FileNotFoundError:
+            continue
+        if is_link_metadata(info):
+            continue
         package_prefix = f"codex/portable-profile/{entry.name}"
-        if entry.is_dir():
+        if stat.S_ISDIR(info.st_mode):
             files, size = tree_stats(
                 entry,
                 [],
                 package_prefix=package_prefix,
                 path_budget=path_budget,
+                installer_packages=lowered == "packages",
             )
-        elif entry.is_file():
-            try:
-                files, size = 1, entry.stat().st_size
-                if path_budget is not None:
-                    record_projected_path(
-                        path_budget,
-                        entry,
-                        package_prefix,
-                        reconstructable_cache=is_reconstructable_python_cache(entry),
-                    )
-            except OSError:
-                continue
+        elif stat.S_ISREG(info.st_mode):
+            files, size = 1, info.st_size
+            if path_budget is not None:
+                record_projected_path(
+                    path_budget, entry, package_prefix,
+                    reconstructable_cache=is_reconstructable_python_cache(entry),
+                )
         else:
             continue
         total_files += files
@@ -1183,14 +1326,15 @@ def build_backup_preview(
 
     projects: list[dict[str, Any]] = []
     for index, item in enumerate(candidates, start=1):
-        source = clean_windows_path(str(item["sourcePath"])).resolve(strict=False)
+        source = clean_windows_path(str(item["sourcePath"]))
         project_path_budget = new_path_budget()
         report_status(
             index - 1,
             max(len(candidates), 1),
             f"Scanning project {index}/{len(candidates)}: {source.name or source}",
         )
-        if source.is_dir() and not broad_or_unsafe_project_path(source, profile, codex_home):
+        problem = project_root_problem(source, profile, codex_home)
+        if problem is None:
             file_count, total_bytes, folders = tree_stats_with_breakdown(
                 source,
                 excludes,
@@ -1199,11 +1343,13 @@ def build_backup_preview(
             )
         else:
             file_count, total_bytes, folders = 0, 0, []
+            log(f"Project root unavailable for selection: {source}: {problem}")
         projects.append(
             {
                 "name": str(item.get("name") or source.name or "project"),
                 "path": str(source),
-                "sourcePresent": source.is_dir(),
+                "sourcePresent": problem is None,
+                "rootProblem": problem,
                 "fileCount": file_count,
                 "totalBytes": total_bytes,
                 "largestFolders": folders[:8],
@@ -1212,6 +1358,17 @@ def build_backup_preview(
                 "pathBudgetItems": path_budget_items(project_path_budget),
             }
         )
+
+    available_roots = {
+        normalized_source_key(clean_windows_path(item["path"])): item["path"]
+        for item in projects if item["sourcePresent"]
+    }
+    for item in projects:
+        if item["sourcePresent"]:
+            key = normalized_source_key(clean_windows_path(item["path"]))
+            parents = [root for root in available_roots if key.startswith(root + os.sep)]
+            if parents:
+                item["nestedUnder"] = available_roots[max(parents, key=len)]
 
     codex_path_budget = new_path_budget()
     codex_files = 1
@@ -1633,6 +1790,12 @@ def add_project_candidate(
             "codexProjectIds": [],
         },
     )
+    if candidate["sourcePath"] != str(path) and path_model.wsl_path_key(str(path)):
+        spellings = candidate.setdefault("wslPathAliases", [candidate["sourcePath"]])
+        if str(path) not in spellings:
+            spellings.append(str(path))
+        if str(path).lower().startswith("\\\\wsl.localhost\\"):
+            candidate["sourcePath"] = str(path)
     if origin not in candidate["origins"]:
         candidate["origins"].append(origin)
     candidate["required"] = bool(candidate["required"] or required)
@@ -1691,7 +1854,11 @@ def collect_project_candidates(
         if not cwd_value:
             continue
         cwd = clean_windows_path(str(cwd_value))
-        if not cwd.is_dir():
+        try:
+            if not cwd.is_dir():
+                continue
+        except OSError:
+            # Stale session working directories are discovery hints, not required data.
             continue
         cwd_key = normalized_source_key(cwd)
         if any(cwd_key == root or cwd_key.startswith(root + os.sep) for root in existing_roots):
@@ -1711,8 +1878,11 @@ def collect_project_candidates(
             continue
         anchor = cwd
         for parent in (cwd, *cwd.parents):
-            if (parent / ".git").exists():
-                anchor = parent
+            try:
+                if (parent / ".git").exists():
+                    anchor = parent
+                    break
+            except OSError:
                 break
         add_project_candidate(
             candidates,
@@ -1857,9 +2027,7 @@ def filter_snapshot_for_excluded_projects(
 
 def is_reparse_point(path: Path) -> bool:
     try:
-        return path.is_symlink() or bool(
-            getattr(os.path, "isjunction", lambda _path: False)(path)
-        )
+        return is_link_metadata(path.lstat())
     except OSError:
         return False
 
@@ -1872,11 +2040,15 @@ def analyze_project_candidates(candidates: list[dict[str, Any]]) -> dict[str, An
     for item in candidates:
         source = clean_windows_path(str(item["sourcePath"]))
         key = normalized_source_key(source)
+        try:
+            present = source.is_dir()
+        except OSError:
+            present = False
         roots.append(
             {
                 "originalPath": str(source),
                 "normalizedPath": key,
-                "sourcePresent": source.is_dir(),
+                "sourcePresent": present,
                 "reparsePoint": is_reparse_point(source),
                 "origins": list(item.get("origins", [])),
                 "codexProjectIds": list(item.get("codexProjectIds", [])),
@@ -1952,10 +2124,14 @@ def copy_portable_codex_profile(
         if is_codex_provisioning_guard_name(entry.name):
             continue
         relative = f"codex/portable-profile/{entry.name}"
-        if entry.is_symlink():
+        try:
+            info = entry.lstat()
+        except OSError as exc:
+            raise BackupError(f"Cannot inspect Codex profile entry: {entry}: {exc}") from exc
+        if is_link_metadata(info):
             warnings.append(f"Codex symbolic link or reparse point skipped: {entry}")
             continue
-        if entry.is_dir():
+        if stat.S_ISDIR(info.st_mode):
             count, size = copy_tree(
                 entry,
                 package_root / relative,
@@ -1964,12 +2140,13 @@ def copy_portable_codex_profile(
                 skipped_reconstructable_cache,
                 dependency_exclusions if lowered == ".chatgpt-projects" else None,
                 applied_dependency_exclusions,
+                installer_packages=lowered == "packages",
             )
-        elif entry.is_file():
+        elif stat.S_ISREG(info.st_mode):
             destination = package_root / relative
             try:
-                copy_file(entry, destination)
-                count, size = 1, entry.stat().st_size
+                copy_backup_payload(entry, destination, warnings)
+                count, size = 1, info.st_size
             except OSError as exc:
                 if record_skipped_reconstructable_cache(
                     entry,
@@ -1994,6 +2171,10 @@ def copy_portable_codex_profile(
 
 
 def broad_or_unsafe_project_path(path: Path, source_profile: Path, codex_home: Path) -> bool:
+    if path.anchor and path == Path(path.anchor):
+        return True
+    if path_model.wsl_path_aliases(str(path)):
+        return False
     resolved = path.resolve(strict=False)
     anchors = {
         Path(resolved.anchor).resolve(strict=False),
@@ -2009,6 +2190,29 @@ def broad_or_unsafe_project_path(path: Path, source_profile: Path, codex_home: P
     return resolved in anchors
 
 
+def project_root_problem(path: Path, source_profile: Path, codex_home: Path) -> str | None:
+    try:
+        if broad_or_unsafe_project_path(path, source_profile, codex_home):
+            return "unsafe-broad-root"
+        if not path.is_dir():
+            return "missing-directory"
+    except OSError:
+        return "unreadable-directory"
+    return None
+
+
+def write_project_read_issues(building: Path, issues: list[dict[str, str]]) -> None:
+    if issues:
+        report = building / "reports" / "project-read-errors.json"
+        write_json(report, {"reportVersion": 1, "count": len(issues), "items": issues})
+        first = issues[0]
+        raise BackupError(
+            f"Project preflight found {len(issues)} blocked path(s). "
+            f"First: {first['sourcePath']} ({first['error']}). "
+            f"Full details: {report}"
+        )
+
+
 def copy_projects(
     candidates: list[dict[str, Any]],
     package_root: Path,
@@ -2019,6 +2223,8 @@ def copy_projects(
     exclude_fragments: list[str],
     warnings: list[str],
     skipped_reconstructable_cache: list[dict[str, Any]] | None = None,
+    *,
+    generated_names: frozenset[str] = frozenset(),
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     projects: list[dict[str, Any]] = []
     mappings: list[dict[str, Any]] = []
@@ -2095,6 +2301,7 @@ def copy_projects(
             exclude_fragments,
             warnings,
             skipped_reconstructable_cache,
+            generated_names=generated_names,
         )
         projects.append(
             {
@@ -2779,6 +2986,12 @@ def load_config(path: Path) -> dict[str, Any]:
         raise BackupError("config.additionalPortablePaths moet een lijst zijn.")
     if not isinstance(config.get("excludedProjectPaths", []), list):
         raise BackupError("config.excludedProjectPaths must be a list.")
+    generated = config.get("excludeGeneratedProjectDirectories", [])
+    if not isinstance(generated, list) or any(
+        not isinstance(name, str) or name.lower() not in GENERATED_PROJECT_NAMES
+        for name in generated
+    ):
+        raise BackupError("excludeGeneratedProjectDirectories supports node_modules and .venv.")
     return config
 
 
@@ -3003,19 +3216,59 @@ def build_backup(args: argparse.Namespace) -> Path:
         candidates, excluded_candidates = select_project_candidates(
             all_candidates, config.get("excludedProjectPaths", [])
         )
+        safe_candidates: list[dict[str, Any]] = []
+        root_issues: list[dict[str, str]] = []
+        building_key = normalized_source_key(building)
+        for item in candidates:
+            source = clean_windows_path(item["sourcePath"])
+            if item.get("wslPathAliases"):
+                warnings.append(
+                    "Equivalent WSL paths backed up once: "
+                    + " | ".join(item["wslPathAliases"])
+                )
+            problem = project_root_problem(source, source_profile, source_codex)
+            if problem == "unsafe-broad-root" and not item.get("required"):
+                excluded_candidates.append(item)
+                warnings.append(f"Unsafe broad project root excluded: {source}")
+                continue
+            if problem and (item.get("required") or problem != "missing-directory"):
+                root_issues.append({"sourcePath": str(source), "error": problem})
+            if not problem:
+                source_key = normalized_source_key(source)
+                if building_key == source_key or building_key.startswith(source_key + os.sep):
+                    root_issues.append({
+                        "sourcePath": str(source),
+                        "error": "The backup destination is inside the project source.",
+                    })
+            safe_candidates.append(item)
+        candidates = safe_candidates
+        write_project_read_issues(building, root_issues)
+        selected_project_ids = {
+            project_id for item in candidates for project_id in item.get("codexProjectIds", [])
+        }
+        excluded_registrations = [
+            {
+                **item,
+                "codexProjectIds": [
+                    project_id for project_id in item.get("codexProjectIds", [])
+                    if project_id not in selected_project_ids
+                ],
+            }
+            for item in excluded_candidates
+        ]
         excluded_project_ids = filter_snapshot_for_excluded_projects(
             building / "codex" / "state.snapshot.sqlite",
             database_info,
-            excluded_candidates,
+            excluded_registrations,
         )
         portable_state = filter_portable_state_for_excluded_projects(
-            portable_state, excluded_candidates
+            portable_state, excluded_registrations
         )
         write_portable_state(building, portable_state)
         if excluded_candidates:
             warnings.append(
                 f"{len(excluded_candidates)} project(s) intentionally excluded from project-file backup; "
-                "their conversations remain included as projectless history."
+                "their conversations remain included."
             )
         project_analysis = analyze_project_candidates(candidates)
         if project_analysis["nestedRoots"]:
@@ -3027,6 +3280,9 @@ def build_backup(args: argparse.Namespace) -> Path:
                 f"{len(project_analysis['reparsePointRoots'])} project root reparse point(s) detected and inventoried."
             )
         excludes = [str(item) for item in config.get("excludeDirectoryNames", [])]
+        generated_names = frozenset(
+            name.lower() for name in config.get("excludeGeneratedProjectDirectories", [])
+        )
 
         current_phase = "dependency-preflight"
         log("Preflight: scanning every reachable Codex project dependency path...")
@@ -3094,15 +3350,20 @@ def build_backup(args: argparse.Namespace) -> Path:
                 "codex/portable-global-state.json",
             )
 
-        for item in candidates:
+        project_read_issues: list[dict[str, str]] = []
+        for index, item in enumerate(candidates, start=1):
             path = clean_windows_path(item["sourcePath"])
-            if path.is_dir() and not broad_or_unsafe_project_path(path, source_profile, source_codex):
+            if project_root_problem(path, source_profile, source_codex) is None:
+                report_status(index - 1, max(len(candidates), 1), f"Checking project readability: {path.name}")
                 estimated_bytes += tree_stats(
                     path,
                     excludes,
                     package_prefix="projects/root-00000000-0000-0000-0000-000000000000",
                     path_budget=projected_paths,
+                    generated_names=generated_names,
+                    read_issues=project_read_issues,
                 )[1]
+        write_project_read_issues(building, project_read_issues)
 
         for extra, source, relative in configured_extra_sources(config):
             if not source.exists():
@@ -3266,6 +3527,7 @@ def build_backup(args: argparse.Namespace) -> Path:
             excludes,
             warnings,
             skipped_reconstructable_cache,
+            generated_names=generated_names,
         )
         unresolved = unresolved_cwds(database_info["threads"], candidates)
         for cwd in unresolved:
@@ -3522,6 +3784,7 @@ def build_backup(args: argparse.Namespace) -> Path:
                 ),
             },
             "selection": {
+                "excludedGeneratedProjectDirectories": sorted(generated_names),
                 "includedProjectPaths": [str(item["sourcePath"]) for item in candidates],
                 "excludedProjectPaths": [
                     str(item["sourcePath"]) for item in excluded_candidates
@@ -3729,8 +3992,13 @@ def build_backup(args: argparse.Namespace) -> Path:
         report_status(0, 0, "All checks passed; completing the backup safely...")
         current_phase = "finalization"
         project_identity.save_registry(identity_registry_path, identity_registry)
-        os.replace(building, final_path)
-        lineage.save_state(lineage_state_path, lineage.state_from_manifest(lineage_manifest))
+        atomic_io.replace_with_retry(building, final_path)
+        try:
+            lineage.save_state(lineage_state_path, lineage.state_from_manifest(lineage_manifest))
+        except OSError as exc:
+            message = f"Backup published, but the local comparison baseline could not be updated: {exc}"
+            warnings.append(message)
+            log(message)
         log("")
         log("PASSED")
         log(f"Backup: {final_path}")
@@ -3741,8 +4009,11 @@ def build_backup(args: argparse.Namespace) -> Path:
         report_status(1, 1, "Backup complete")
         return final_path
     except Exception as exc:
-        error_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_io.write_text(error_path, traceback.format_exc())
+        try:
+            error_path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_io.write_text(error_path, traceback.format_exc())
+        except OSError as report_error:
+            log(f"Could not write backup error log: {report_error}")
         try:
             package_path = building / "manifest" / "package.json"
             if package_path.is_file():

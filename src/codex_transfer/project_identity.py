@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
-from . import atomic_io
+from . import atomic_io, path_model
 
 
 REGISTRY_VERSION = 1
@@ -27,7 +27,7 @@ def utc_now() -> str:
 
 
 def canonical_path(value: str | Path) -> str:
-    return ntpath.normcase(ntpath.normpath(str(value))).casefold()
+    return path_model.wsl_path_key(str(value)) or ntpath.normcase(ntpath.normpath(str(value))).casefold()
 
 
 def empty_registry() -> dict[str, Any]:
@@ -106,9 +106,9 @@ def _require_valid(value: Any) -> None:
 
 def _git_remote_hashes(project_path: Path) -> list[str]:
     config = project_path / ".git" / "config"
-    if not config.is_file():
-        return []
     try:
+        if not config.is_file():
+            return []
         text = config.read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
         return []
@@ -121,10 +121,14 @@ def _git_remote_hashes(project_path: Path) -> list[str]:
 
 
 def identity_evidence(project_path: Path) -> dict[str, Any]:
+    try:
+        has_git_metadata = (project_path / ".git").exists()
+    except OSError:
+        has_git_metadata = False
     return {
         "pathKey": canonical_path(project_path),
         "gitRemoteHashes": _git_remote_hashes(project_path),
-        "hasGitMetadata": (project_path / ".git").exists(),
+        "hasGitMetadata": has_git_metadata,
     }
 
 
@@ -176,7 +180,9 @@ def assign_identity(
         if set(project.get("codexProjectIds", [])) & set(codex_ids):
             codex_matches.append(project)
         for root in project.get("roots", []):
-            if evidence["pathKey"] in root.get("pathKeys", []):
+            previous_wsl_key = path_model.wsl_path_key(str(root.get("lastKnownPath", "")))
+            known_keys = [previous_wsl_key] if previous_wsl_key else root.get("pathKeys", [])
+            if evidence["pathKey"] in known_keys:
                 path_matches.append((project, root))
             if evidence["gitRemoteHashes"] and set(evidence["gitRemoteHashes"]) & set(
                 root.get("gitRemoteHashes", [])

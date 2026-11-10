@@ -29,6 +29,28 @@ class LocationError(ValueError):
     pass
 
 
+def wsl_path_aliases(value: str) -> tuple[str, str] | None:
+    """Return the two UNC spellings while preserving Linux path component case."""
+    path = str(value).replace("/", "\\")
+    if path[:8].lower() == "\\\\?\\unc\\":
+        path = "\\\\" + path[8:]
+    if not path.startswith("\\\\"):
+        return None
+    host, _, suffix = path[2:].partition("\\")
+    if host.lower() not in {"wsl$", "wsl.localhost"} or not suffix:
+        return None
+    return "\\\\wsl$\\" + suffix, "\\\\wsl.localhost\\" + suffix
+
+
+def wsl_path_key(value: str) -> str | None:
+    aliases = wsl_path_aliases(ntpath.normpath(value))
+    if not aliases:
+        return None
+    prefix = "\\\\wsl$\\"
+    distro, separator, suffix = aliases[0][len(prefix):].partition("\\")
+    return (prefix + distro.lower() + separator + suffix).rstrip("\\")
+
+
 def _path(value: str) -> PureWindowsPath:
     normalized = ntpath.normpath(str(value).strip())
     candidate = PureWindowsPath(normalized)
